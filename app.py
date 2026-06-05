@@ -1,4 +1,4 @@
-#2026-6-6 version2.5.5gemini対応版
+#2026-6-6 version2.5.5gemini対応版（オプション対応）
 
 # -*- coding: utf-8 -*-
 import os
@@ -8,540 +8,53 @@ import hashlib
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
-import google.generativeai as genai
 
-# 環境変数からAPIキーを取得（Renderの環境変数に設定）
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+# Geminiはオプション（パッケージがない場合はスキップ）
+GEMINI_AVAILABLE = False
+gemini_model = None
 
-# Geminiの設定
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-    gemini_model = genai.GenerativeModel('gemini-1.5-flash')
-else:
-    gemini_model = None
-    print("【警告】GEMINI_API_KEYが設定されていません。ダミーコメントを使用します。")
+try:
+    import google.generativeai as genai
+    GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+    if GEMINI_API_KEY:
+        genai.configure(api_key=GEMINI_API_KEY)
+        gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+        GEMINI_AVAILABLE = True
+        print("【Gemini】有効化されました")
+    else:
+        print("【Gemini】APIキーが設定されていません - ダミーコメントを使用します")
+except ImportError:
+    print("【Gemini】パッケージがインストールされていません - ダミーコメントを使用します")
+except Exception as e:
+    print(f"【Gemini】初期化エラー: {e}")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # --- 1. アプリと設定の初期化 ---
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'default_secret_key_for_production')
 DATABASE_URL = os.environ.get('DATABASE_URL')
+
+# アプリケーションの設定
+app.config.update(
+    SESSION_COOKIE_SECURE = False,
+    SESSION_COOKIE_HTTPONLY = True,
+    SESSION_COOKIE_SAMESITE = 'Lax',
+    PERMANENT_SESSION_LIFETIME = 3600,
+)
+
 # --- 2. データベース接続関数 ---
 def get_db():
-    # 環境変数をここで必ず取得する
     db_url = os.environ.get('DATABASE_URL')
     if not db_url:
         raise ValueError("DATABASE_URLが設定されていません")   
     conn = psycopg2.connect(db_url)
     return conn
 
-# データを取得  するためのユーティリティ関数
-def query_db(query, args=(), one=False):
-    conn = get_db()
-    cur = conn.cursor(cursor_factory=RealDictCursor) 
-    cur.execute(query, args)
-    rv = cur.fetchall()
-    cur.close()
-    conn.close()
-    return (rv[0] if rv else None) if one else rv
-
 def hash_password(password):
     return hashlib.sha256((password or "").encode('utf-8')).hexdigest()
 
-def init_db():
-    conn = None
-    try:
-        conn = get_db()
-        with conn.cursor() as cur:
-            # ユーザーテーブル
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id TEXT PRIMARY KEY, 
-                    name TEXT, 
-                    class_id TEXT, 
-                    password TEXT, 
-                    role TEXT
-                )
-            """)
-            
-            # テストテーブル（idはSERIALで自動採番）
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS tests (
-                    id SERIAL PRIMARY KEY, 
-                    name TEXT, 
-                    target_class TEXT, 
-                    duration INTEGER DEFAULT 30
-                )
-            """)
-            
-            # 質問テーブル（idはSERIALで自動採番）
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS questions (
-                    id SERIAL PRIMARY KEY, 
-                    test_id INTEGER, 
-                    q_no INTEGER, 
-                    category TEXT, 
-                    question TEXT, 
-                    target TEXT,
-                    a1 TEXT, a2 TEXT, a3 TEXT, a4 TEXT, a5 TEXT, 
-                    a6 TEXT, a7 TEXT, a8 TEXT, a9 TEXT, a10 TEXT, 
-                    answer TEXT, 
-                    explanation TEXT
-                )
-            """)
-            
-            # 結果テーブル
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS results (
-                    id SERIAL PRIMARY KEY, 
-                    test_id INTEGER, 
-                    user_id TEXT, 
-                    score INTEGER, 
-                    details TEXT, 
-                    comment TEXT, 
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            conn.commit()
-            print("【初期化】すべてのテーブルの確認・作成が完了しました")
-            
-            # シーケンスをリセット（既存データがある場合）
-            cur.execute("SELECT COUNT(*) FROM questions")
-            count = cur.fetchone()[0]
-            if count > 0:
-                cur.execute("SELECT setval('questions_id_seq', (SELECT MAX(id) FROM questions))")
-                conn.commit()
-                print(f"【初期化】questions_id_seq をリセットしました（現在の最大ID: {count}）")
-            
-    except Exception as e:
-        print(f"【エラー】初期化中にエラーが発生しました: {e}")
-        raise
-    finally:
-        if conn:
-            conn.close()
-            print("【初期化】DB接続を閉じました")
 
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        u_id = request.form.get('id', '').strip()
-        pwd = request.form.get('password')
-        hashed_pwd = hash_password(pwd)
-        
-        try:
-            conn = get_db()
-            # 【重要】RealDictCursor を指定することで、user['password'] が使えるようになります
-            cur = conn.cursor(cursor_factory=RealDictCursor)
-            cur.execute('SELECT * FROM users WHERE id = %s', (u_id,))
-            user = cur.fetchone()
-            cur.close()
-            conn.close()
-            
-            if user and user['password'] == hashed_pwd:
-                session.clear()
-                session.update({
-                    'user_id': user['id'], 
-                    'user_name': user['name'], 
-                    'role': user['role'],
-                    'class_id': user.get('class_id') 
-                })
-                return redirect(url_for('index'))
-            else:
-                flash("IDまたはパスワードが間違っています")
-        except Exception as e:
-            print(f"ログインエラー: {e}")
-            flash("システムエラーが発生しました")
-            
-    return render_template('login.html')
-
-@app.route('/')
-def index():
-    # セッションがない、またはIDがない場合はログインへ
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
-    # 役割による振り分け
-    user_role = session.get('role')
-    if user_role == 'teacher':
-        return redirect(url_for('teacher_admin'))
-    elif user_role == 'student':
-        return redirect(url_for('student_dashboard'))
-    
-    # どちらでもない場合は不正なセッションとみなしログアウト
-    return redirect(url_for('logout'))
-
-# 新規登録
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        u_id = request.form.get('id', '')
-        pwd = request.form.get('password', '')
-
-        # バリデーション：空チェックと長さ制限
-        if not u_id or not pwd:
-            flash("IDとパスワードを入力してください。")
-            return render_template('register.html')
-        
-        if len(u_id) > 20 or len(pwd) > 50:
-            flash("入力内容が長すぎます。")
-            return render_template('register.html')
-
-        hashed_pwd = hash_password(pwd)
-        try:
-            conn = get_db()
-            cur = conn.cursor()
-            cur.execute('UPDATE users SET password = %s WHERE id = %s', (hashed_pwd, u_id))
-            if cur.rowcount == 0:
-                flash("IDが見つかりません。")
-            else:
-                conn.commit()
-                flash("登録が完了しました。")
-            cur.close()
-            conn.close()
-        except Exception as e:
-            flash("システムエラーが発生しました。")
-    return render_template('register.html')
-
-@app.route('/teacher/admin', methods=['GET', 'POST'])
-def teacher_admin():
-    if session.get('role') != 'teacher': 
-        return redirect(url_for('index'))
-    
-    if request.method == 'POST':
-        t_name = request.form.get('test_name')
-        t_class = request.form.get('target_class')
-        t_duration = request.form.get('duration', 30)
-        file = request.files.get('test_csv')
-
-        if t_name and t_class and file:
-            conn = None
-            try:
-                conn = get_db()
-                cur = conn.cursor()
-                
-                # ========== 1. testsテーブルのIDを手動採番 ==========
-                cur.execute("SELECT COALESCE(MAX(id), 0) FROM tests")
-                max_test_id = cur.fetchone()[0]
-                new_test_id = max_test_id + 1
-                
-                cur.execute('''
-                    INSERT INTO tests (id, name, target_class, duration) 
-                    VALUES (%s, %s, %s, %s)
-                ''', (new_test_id, t_name, t_class, t_duration))
-                
-                # ========== 2. questionsテーブルの現在の最大IDを取得 ==========
-                cur.execute("SELECT COALESCE(MAX(id), 0) FROM questions")
-                max_q_id = cur.fetchone()[0]
-                next_q_id = max_q_id + 1  # 次のIDの開始値
-                
-                # ========== 3. CSVファイルの読み込み ==========
-                import io
-                import csv
-                import re
-                
-                file_content = file.read()
-                
-                # エンコーディングを自動判定
-                try:
-                    decoded_content = file_content.decode('utf-8-sig')
-                except UnicodeDecodeError:
-                    try:
-                        decoded_content = file_content.decode('cp932')
-                    except UnicodeDecodeError:
-                        decoded_content = file_content.decode('latin-1')
-                
-                stream = io.StringIO(decoded_content)
-                reader = csv.DictReader(stream)
-                
-                # カラム名を動的に検出する関数
-                def find_column(reader, patterns):
-                    for pattern in patterns:
-                        for col in reader.fieldnames:
-                            if pattern.lower() in col.lower() or col == pattern:
-                                return col
-                    return None
-                
-                # 必要なカラムを動的に検出
-                q_no_col = find_column(reader, ['测试编号', 'test_number', '番号', 'no', '問題番号', '序号'])
-                category_col = find_column(reader, ['A-Z category', 'category', 'カテゴリ', 'ジャンル', 'test genre'])
-                question_col = find_column(reader, ['A-Z question', 'question', '問題文', 'test questions'])
-                target_col = find_column(reader, ['A-Z target', 'target', 'ターゲット'])
-                answer_col = find_column(reader, ['A-Z answer', 'answer', '正解', 'Answer'])
-                explanation_col = find_column(reader, ['Test explanation', 'explanation', '解説'])
-                
-                # 選択肢のカラムを動的に検出
-                choice_columns = []
-                for i in range(1, 11):
-                    patterns = [
-                        f'a{i}', f'A-Z a{i}', f'Answer_{i}', f'選択肢{i}',
-                        f'option{i}', f'Option{i}', f'OPTION{i}'
-                    ]
-                    found = find_column(reader, patterns)
-                    choice_columns.append(found)
-                
-                inserted_count = 0
-                skipped_count = 0
-                
-                for row in reader:
-                    # 問題番号を取得
-                    q_no_raw = ''
-                    if q_no_col:
-                        q_no_raw = row.get(q_no_col, '').strip()
-                    
-                    # 空行や無効な行をスキップ
-                    if not q_no_raw or q_no_raw == 'end' or q_no_raw == '序号':
-                        skipped_count += 1
-                        continue
-                    
-                    # 数値に変換できない場合はスキップ
-                    try:
-                        q_no_int = int(float(q_no_raw))
-                    except (ValueError, TypeError):
-                        skipped_count += 1
-                        continue
-                    
-                    # 選択肢を取得
-                    a1 = row.get(choice_columns[0], '').strip() if choice_columns[0] else ''
-                    a2 = row.get(choice_columns[1], '').strip() if choice_columns[1] else ''
-                    a3 = row.get(choice_columns[2], '').strip() if choice_columns[2] else ''
-                    a4 = row.get(choice_columns[3], '').strip() if choice_columns[3] else ''
-                    a5 = row.get(choice_columns[4], '').strip() if choice_columns[4] else ''
-                    a6 = row.get(choice_columns[5], '').strip() if choice_columns[5] else ''
-                    a7 = row.get(choice_columns[6], '').strip() if choice_columns[6] else ''
-                    a8 = row.get(choice_columns[7], '').strip() if choice_columns[7] else ''
-                    a9 = row.get(choice_columns[8], '').strip() if choice_columns[8] else ''
-                    a10 = row.get(choice_columns[9], '').strip() if choice_columns[9] else ''
-                    
-                    # 正解の取得
-                    answer_val = ''
-                    if answer_col:
-                        answer_val = row.get(answer_col, '').strip()
-                    
-                    # 解説の取得
-                    explanation = ''
-                    if explanation_col:
-                        explanation = row.get(explanation_col, '').strip()
-                    
-                    # カテゴリ・問題文・ターゲットの取得
-                    category = row.get(category_col, '').strip() if category_col else ''
-                    question = row.get(question_col, '').strip() if question_col else ''
-                    target = row.get(target_col, '').strip() if target_col else ''
-                    
-                    def null_to_empty(val):
-                        return val if val is not None else ''
-                    
-                    # ========== 重要: IDを手動で指定してINSERT ==========
-                    cur.execute('''
-                        INSERT INTO questions (
-                            id, test_id, q_no, category, question, target, 
-                            a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, 
-                            answer, explanation
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ''', (
-                        next_q_id,  # 手動で採番したID
-                        new_test_id, 
-                        q_no_int, 
-                        null_to_empty(category), 
-                        null_to_empty(question), 
-                        null_to_empty(target),
-                        null_to_empty(a1), null_to_empty(a2), null_to_empty(a3), null_to_empty(a4), null_to_empty(a5),
-                        null_to_empty(a6), null_to_empty(a7), null_to_empty(a8), null_to_empty(a9), null_to_empty(a10),
-                        null_to_empty(answer_val), 
-                        null_to_empty(explanation)
-                    ))
-                    
-                    next_q_id += 1  # IDをインクリメント
-                    inserted_count += 1
-                
-                conn.commit()
-                cur.close()
-                conn.close()
-                
-                flash(f'「{t_name}」を正常に登録しました。（{inserted_count}問登録 / {skipped_count}行スキップ）')
-                
-            except Exception as e:
-                if conn:
-                    conn.rollback()
-                    conn.close()
-                flash(f'CSV登録エラー: {str(e)}')
-                import traceback
-                traceback.print_exc()
-        
-        return redirect(url_for('teacher_admin'))
-
-    # GET処理
-    tests, results, classes = [], [], []
-    try:
-        conn = get_db()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT DISTINCT class_id FROM users WHERE class_id IS NOT NULL AND class_id != 'teacher' ORDER BY class_id ASC")
-        classes = [row['class_id'] for row in cur.fetchall()]
-        cur.execute('SELECT * FROM tests ORDER BY id DESC')
-        tests = cur.fetchall()
-        cur.execute('''SELECT r.id, t.name AS test_name, u.class_id, u.id AS student_id, u.name AS student_name, r.score, r.timestamp 
-                       FROM results r 
-                       JOIN tests t ON r.test_id = t.id 
-                       JOIN users u ON r.user_id = u.id 
-                       ORDER BY r.timestamp DESC''')
-        results = cur.fetchall()
-        cur.close()
-        conn.close()
-    except Exception as e:
-        print(f"データ取得エラー: {e}")
-        
-    return render_template('admin.html', tests=tests, results=results, classes=classes)
-#削除用
-@app.route('/teacher/delete_test/<int:test_id>', methods=['POST'])
-def delete_test(test_id):
-    if session.get('role') != 'teacher': return redirect(url_for('index'))
-    conn = get_db()
-    cur = conn.cursor()
-    # 削除順序: 結果 → 問題 → テスト
-    cur.execute('DELETE FROM results WHERE test_id = %s', (test_id,))
-    cur.execute('DELETE FROM questions WHERE test_id = %s', (test_id,))
-    cur.execute('DELETE FROM tests WHERE id = %s', (test_id,))
-    conn.commit()
-    cur.close()
-    conn.close()
-    flash('テストと関連するすべての結果を削除しました。')
-    return redirect(url_for('teacher_admin'))
-
-@app.route('/student/test/<int:test_id>/cheated', methods=['POST'])
-def cheated_test(test_id):
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute('INSERT INTO results (test_id, user_id, score, comment) VALUES (%s, %s, %s, %s)',
-                (test_id, session.get('user_id'), 0, "失格"))
-    conn.commit()
-    cur.close()
-    conn.close()
-    return jsonify({'status': 'ok', 'redirect_url': url_for('student_dashboard')})
-# 生徒用ダッシュボード（リダイレクト先）
-@app.route('/student_dashboard')
-def student_dashboard():
-    if session.get('role') != 'student': 
-        return redirect(url_for('index'))
-    conn = get_db()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    # ユーザーのクラスを取得
-    cur.execute('SELECT class_id FROM users WHERE id = %s', (session.get('user_id'),))
-    user = cur.fetchone()
-    class_id = user['class_id'] if user else None
-    
-    # テストと結果を取得
-    cur.execute('SELECT * FROM tests WHERE target_class = %s', (class_id,))
-    tests = cur.fetchall()
-    cur.execute('''
-        SELECT r.id, t.name AS test_name, r.score, r.timestamp FROM results r
-        JOIN tests t ON r.test_id = t.id WHERE r.user_id = %s ORDER BY r.timestamp DESC
-    ''', (session.get('user_id'),))
-    my_results = cur.fetchall()
-    cur.close()
-    conn.close()
-    return render_template('student_dashboard.html', tests=tests, my_results=my_results)
-    print("CSVのカラム名一覧:", list(reader.fieldnames))
-
-# --- 試験開始処理 ---
-@app.route('/student/test/<int:test_id>/start', methods=['GET', 'POST'])
-def take_test(test_id):
-    if session.get('role') != 'student':
-        flash("受験には生徒アカウントでのログインが必要です。")
-        return redirect(url_for('login'))
-    
-    session['answers'] = {}
-    session['current_test_id'] = test_id
-    
-    conn = None
-    try:
-        conn = get_db()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        # テスト情報の取得
-        cur.execute('SELECT * FROM tests WHERE id = %s', (test_id,))
-        test = cur.fetchone()
-        
-        # 総問題数の取得
-        cur.execute('SELECT COUNT(*) as total FROM questions WHERE test_id = %s', (test_id,))
-        total_data = cur.fetchone()
-        total_q = total_data['total'] if total_data else 0
-        
-        cur.close()
-        conn.close()
-        
-        if not test:
-            flash("選択したテストは見つかりませんでした。")
-            return redirect(url_for('student_dashboard'))
-        
-        # 修正：test と total_q をテンプレートに渡す
-        return render_template('test_page.html', test_id=test_id, test=test, total_q=total_q)
-        
-    except Exception as e:
-        if conn: conn.close()
-        print(f"Error in take_test: {e}")
-        flash("システムエラーが発生しました。")
-        return redirect(url_for('student_dashboard'))
-
-
-def generate_ai_comment_with_gemini(score, details_data, student_name, test_name):
-    """より詳細なGeminiコメント生成"""
-    
-    if not gemini_model:
-        return generate_ai_comment(score, details_data)
-    
-    labels = details_data.get('labels', [])
-    scores = details_data.get('scores', [])
-    
-    # 成績の統計情報
-    avg_score = sum(scores) / len(scores) if scores else 0
-    max_category = labels[scores.index(max(scores))] if scores else "なし"
-    min_category = labels[scores.index(min(scores))] if scores else "なし"
-    
-    category_results = "\n".join([f"- {labels[i]}: {scores[i]}%" for i in range(len(labels)) if i < len(scores)])
-    
-    prompt = f"""
-あなたは経験豊富な教育カウンセラーです。以下の学生の試験結果を分析し、温かみのある励ましと具体的なアドバイスを日本語で提供してください。
-
-【学生情報】
-名前: {student_name}
-受験した試験: {test_name}
-
-【成績データ】
-総合得点: {score}点 / 100点
-カテゴリー別正解率:
-{category_results}
-
-【統計情報】
-平均正解率: {avg_score:.1f}%
-最も得意な分野: {max_category}
-最も苦手な分野: {min_category}
-
-【出力形式】
-以下の4つのセクションに分けて、合計200〜250字程度で回答してください：
-
-💡 **総合評価**
-（学生の頑張りを認めつつ、率直な評価を1-2文で）
-
-⭐ **強み**
-（得意な分野と、その強みをどう活かせるかのアドバイス）
-
-📚 **改善ポイント**
-（苦手な分野と、具体的な学習方法の提案）
-
-🎯 **次のステップ**
-（今後どのように学習を進めるべきかの具体的なアドバイス）
-
-全体として、学生のモチベーションが上がるような前向きな表現を心がけてください。
-"""
-    
-    try:
-        response = gemini_model.generate_content(prompt)
-        comment = response.text
-        return comment
-    except Exception as e:
-        print(f"【Geminiエラー】: {e}")
-        return generate_ai_comment(score, details_data)
-
-
+# ========== コメント生成関数 ==========
 def generate_ai_comment(score, details_data):
     """フォールバック用の従来型コメント生成"""
     labels = details_data.get('labels', [])
@@ -583,34 +96,376 @@ def generate_ai_comment(score, details_data):
     
     return comment
 
-# 試験終了（提出）処理ルート
-def calculate_analysis(test_id, user_answers):
-    conn = get_db()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    # genre → category, correct_answer → answer に修正
-    cur.execute("SELECT id, category, answer FROM questions WHERE test_id = %s", (test_id,))
-    questions = cur.fetchall() 
-    genre_stats = {}
-    for q in questions:
-        category = q['category']
-        if category not in genre_stats:
-            genre_stats[category] = {'correct': 0, 'total': 0}       
-        genre_stats[category]['total'] += 1
-        if str(user_answers.get(str(q['id']))) == str(q['answer']):
-            genre_stats[category]['correct'] += 1
+
+def generate_ai_comment_with_gemini(score, details_data, student_name, test_name):
+    """Geminiコメント生成（利用可能な場合のみ）"""
     
-    labels = list(genre_stats.keys())
-    scores = [int((genre_stats[g]['correct'] / genre_stats[g]['total']) * 100) for g in labels]
+    if not GEMINI_AVAILABLE or not gemini_model:
+        return generate_ai_comment(score, details_data)
+    
+    labels = details_data.get('labels', [])
+    scores = details_data.get('scores', [])
+    
+    if not labels or not scores:
+        return generate_ai_comment(score, details_data)
+    
+    avg_score = sum(scores) / len(scores) if scores else 0
+    max_category = labels[scores.index(max(scores))] if scores else "なし"
+    min_category = labels[scores.index(min(scores))] if scores else "なし"
+    
+    category_results = "\n".join([f"- {labels[i]}: {scores[i]}%" for i in range(len(labels)) if i < len(scores)])
+    
+    prompt = f"""
+あなたは経験豊富な教育カウンセラーです。以下の学生の試験結果を分析し、温かみのある励ましと具体的なアドバイスを日本語で提供してください。
+
+【学生情報】
+名前: {student_name}
+受験した試験: {test_name}
+
+【成績データ】
+総合得点: {score}点 / 100点
+カテゴリー別正解率:
+{category_results}
+
+【統計情報】
+平均正解率: {avg_score:.1f}%
+最も得意な分野: {max_category}
+最も苦手な分野: {min_category}
+
+【出力形式】
+以下の4つのセクションに分けて回答してください：
+
+💡 **総合評価**
+⭐ **強み**
+📚 **改善ポイント**
+🎯 **次のステップ**
+"""
+    
+    try:
+        response = gemini_model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        print(f"【Geminiエラー】: {e}")
+        return generate_ai_comment(score, details_data)
+
+
+# ========== 以下、通常のルーティング（変更なし） ==========
+# ※ ここから先は前回のコードと同じです
+# （省略しますが、前回のapp.pyの内容を続けて貼り付けてください）
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        u_id = request.form.get('id', '').strip()
+        pwd = request.form.get('password')
+        hashed_pwd = hash_password(pwd)
+        
+        try:
+            conn = get_db()
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute('SELECT * FROM users WHERE id = %s', (u_id,))
+            user = cur.fetchone()
+            cur.close()
+            conn.close()
+            
+            if user and user['password'] == hashed_pwd:
+                session.clear()
+                session.update({
+                    'user_id': user['id'], 
+                    'user_name': user['name'], 
+                    'role': user['role'],
+                    'class_id': user.get('class_id') 
+                })
+                return redirect(url_for('index'))
+            else:
+                flash("IDまたはパスワードが間違っています")
+        except Exception as e:
+            print(f"ログインエラー: {e}")
+            flash("システムエラーが発生しました")
+            
+    return render_template('login.html')
+
+
+@app.route('/')
+def index():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    user_role = session.get('role')
+    if user_role == 'teacher':
+        return redirect(url_for('teacher_admin'))
+    elif user_role == 'student':
+        return redirect(url_for('student_dashboard'))
+    
+    return redirect(url_for('logout'))
+
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        u_id = request.form.get('id', '')
+        pwd = request.form.get('password', '')
+
+        if not u_id or not pwd:
+            flash("IDとパスワードを入力してください。")
+            return render_template('register.html')
+        
+        if len(u_id) > 20 or len(pwd) > 50:
+            flash("入力内容が長すぎます。")
+            return render_template('register.html')
+
+        hashed_pwd = hash_password(pwd)
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute('UPDATE users SET password = %s WHERE id = %s', (hashed_pwd, u_id))
+            if cur.rowcount == 0:
+                flash("IDが見つかりません。")
+            else:
+                conn.commit()
+                flash("登録が完了しました。")
+            cur.close()
+            conn.close()
+        except Exception as e:
+            flash("システムエラーが発生しました。")
+    return render_template('register.html')
+
+
+@app.route('/teacher/admin', methods=['GET', 'POST'])
+def teacher_admin():
+    if session.get('role') != 'teacher': 
+        return redirect(url_for('index'))
+    
+    if request.method == 'POST':
+        t_name = request.form.get('test_name')
+        t_class = request.form.get('target_class')
+        t_duration = request.form.get('duration', 30)
+        file = request.files.get('test_csv')
+
+        if t_name and t_class and file:
+            conn = None
+            try:
+                conn = get_db()
+                cur = conn.cursor()
+                
+                cur.execute("SELECT COALESCE(MAX(id), 0) FROM tests")
+                max_test_id = cur.fetchone()[0]
+                new_test_id = max_test_id + 1
+                
+                cur.execute('''
+                    INSERT INTO tests (id, name, target_class, duration) 
+                    VALUES (%s, %s, %s, %s)
+                ''', (new_test_id, t_name, t_class, t_duration))
+                
+                cur.execute("SELECT COALESCE(MAX(id), 0) FROM questions")
+                max_q_id = cur.fetchone()[0]
+                next_q_id = max_q_id + 1
+                
+                file_content = file.read()
+                
+                try:
+                    decoded_content = file_content.decode('utf-8-sig')
+                except UnicodeDecodeError:
+                    try:
+                        decoded_content = file_content.decode('cp932')
+                    except UnicodeDecodeError:
+                        decoded_content = file_content.decode('latin-1')
+                
+                stream = io.StringIO(decoded_content)
+                reader = csv.DictReader(stream)
+                
+                def find_column(reader, patterns):
+                    for pattern in patterns:
+                        for col in reader.fieldnames:
+                            if pattern.lower() in col.lower() or col == pattern:
+                                return col
+                    return None
+                
+                q_no_col = find_column(reader, ['测试编号', 'test_number', '番号', 'no', '問題番号', '序号'])
+                category_col = find_column(reader, ['A-Z category', 'category', 'カテゴリ', 'ジャンル', 'test genre'])
+                question_col = find_column(reader, ['A-Z question', 'question', '問題文', 'test questions'])
+                target_col = find_column(reader, ['A-Z target', 'target', 'ターゲット'])
+                answer_col = find_column(reader, ['A-Z answer', 'answer', '正解', 'Answer'])
+                explanation_col = find_column(reader, ['Test explanation', 'explanation', '解説'])
+                
+                choice_columns = []
+                for i in range(1, 11):
+                    patterns = [f'a{i}', f'A-Z a{i}', f'Answer_{i}', f'選択肢{i}', f'option{i}']
+                    found = find_column(reader, patterns)
+                    choice_columns.append(found)
+                
+                inserted_count = 0
+                skipped_count = 0
+                
+                for row in reader:
+                    q_no_raw = ''
+                    if q_no_col:
+                        q_no_raw = row.get(q_no_col, '').strip()
+                    
+                    if not q_no_raw or q_no_raw == 'end' or q_no_raw == '序号':
+                        skipped_count += 1
+                        continue
+                    
+                    try:
+                        q_no_int = int(float(q_no_raw))
+                    except (ValueError, TypeError):
+                        skipped_count += 1
+                        continue
+                    
+                    a1 = row.get(choice_columns[0], '').strip() if choice_columns[0] else ''
+                    a2 = row.get(choice_columns[1], '').strip() if choice_columns[1] else ''
+                    a3 = row.get(choice_columns[2], '').strip() if choice_columns[2] else ''
+                    a4 = row.get(choice_columns[3], '').strip() if choice_columns[3] else ''
+                    a5 = row.get(choice_columns[4], '').strip() if choice_columns[4] else ''
+                    a6 = row.get(choice_columns[5], '').strip() if choice_columns[5] else ''
+                    a7 = row.get(choice_columns[6], '').strip() if choice_columns[6] else ''
+                    a8 = row.get(choice_columns[7], '').strip() if choice_columns[7] else ''
+                    a9 = row.get(choice_columns[8], '').strip() if choice_columns[8] else ''
+                    a10 = row.get(choice_columns[9], '').strip() if choice_columns[9] else ''
+                    
+                    answer_val = row.get(answer_col, '').strip() if answer_col else ''
+                    explanation = row.get(explanation_col, '').strip() if explanation_col else ''
+                    category = row.get(category_col, '').strip() if category_col else ''
+                    question = row.get(question_col, '').strip() if question_col else ''
+                    target = row.get(target_col, '').strip() if target_col else ''
+                    
+                    def null_to_empty(val):
+                        return val if val is not None else ''
+                    
+                    cur.execute('''
+                        INSERT INTO questions (
+                            id, test_id, q_no, category, question, target, 
+                            a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, 
+                            answer, explanation
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ''', (
+                        next_q_id, new_test_id, q_no_int, 
+                        null_to_empty(category), null_to_empty(question), null_to_empty(target),
+                        null_to_empty(a1), null_to_empty(a2), null_to_empty(a3), null_to_empty(a4), null_to_empty(a5),
+                        null_to_empty(a6), null_to_empty(a7), null_to_empty(a8), null_to_empty(a9), null_to_empty(a10),
+                        null_to_empty(answer_val), null_to_empty(explanation)
+                    ))
+                    
+                    next_q_id += 1
+                    inserted_count += 1
+                
+                conn.commit()
+                cur.close()
+                conn.close()
+                flash(f'「{t_name}」を正常に登録しました。（{inserted_count}問登録 / {skipped_count}行スキップ）')
+                
+            except Exception as e:
+                if conn:
+                    conn.rollback()
+                    conn.close()
+                flash(f'CSV登録エラー: {str(e)}')
+                import traceback
+                traceback.print_exc()
+        
+        return redirect(url_for('teacher_admin'))
+
+    tests, results, classes = [], [], []
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT DISTINCT class_id FROM users WHERE class_id IS NOT NULL AND class_id != 'teacher' ORDER BY class_id ASC")
+        classes = [row['class_id'] for row in cur.fetchall()]
+        cur.execute('SELECT * FROM tests ORDER BY id DESC')
+        tests = cur.fetchall()
+        cur.execute('''SELECT r.id, t.name AS test_name, u.class_id, u.id AS student_id, u.name AS student_name, r.score, r.timestamp 
+                       FROM results r 
+                       JOIN tests t ON r.test_id = t.id 
+                       JOIN users u ON r.user_id = u.id 
+                       ORDER BY r.timestamp DESC''')
+        results = cur.fetchall()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"データ取得エラー: {e}")
+        
+    return render_template('admin.html', tests=tests, results=results, classes=classes)
+
+
+@app.route('/teacher/delete_test/<int:test_id>', methods=['POST'])
+def delete_test(test_id):
+    if session.get('role') != 'teacher': 
+        return redirect(url_for('index'))
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('DELETE FROM results WHERE test_id = %s', (test_id,))
+    cur.execute('DELETE FROM questions WHERE test_id = %s', (test_id,))
+    cur.execute('DELETE FROM tests WHERE id = %s', (test_id,))
+    conn.commit()
     cur.close()
     conn.close()
-    return {"labels": labels, "scores": scores}
+    flash('テストと関連するすべての結果を削除しました。')
+    return redirect(url_for('teacher_admin'))
+
+
+@app.route('/student_dashboard')
+def student_dashboard():
+    if session.get('role') != 'student': 
+        return redirect(url_for('index'))
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute('SELECT class_id FROM users WHERE id = %s', (session.get('user_id'),))
+    user = cur.fetchone()
+    class_id = user['class_id'] if user else None
+    
+    cur.execute('SELECT * FROM tests WHERE target_class = %s', (class_id,))
+    tests = cur.fetchall()
+    cur.execute('''
+        SELECT r.id, t.name AS test_name, r.score, r.timestamp FROM results r
+        JOIN tests t ON r.test_id = t.id WHERE r.user_id = %s ORDER BY r.timestamp DESC
+    ''', (session.get('user_id'),))
+    my_results = cur.fetchall()
+    cur.close()
+    conn.close()
+    return render_template('student_dashboard.html', tests=tests, my_results=my_results)
+
+
+@app.route('/student/test/<int:test_id>/start', methods=['GET', 'POST'])
+def take_test(test_id):
+    if session.get('role') != 'student':
+        flash("受験には生徒アカウントでのログインが必要です。")
+        return redirect(url_for('login'))
+    
+    session['answers'] = {}
+    session['current_test_id'] = test_id
+    
+    conn = None
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute('SELECT * FROM tests WHERE id = %s', (test_id,))
+        test = cur.fetchone()
+        
+        cur.execute('SELECT COUNT(*) as total FROM questions WHERE test_id = %s', (test_id,))
+        total_data = cur.fetchone()
+        total_q = total_data['total'] if total_data else 0
+        
+        cur.close()
+        conn.close()
+        
+        if not test:
+            flash("選択したテストは見つかりませんでした。")
+            return redirect(url_for('student_dashboard'))
+        
+        return render_template('test_page.html', test_id=test_id, test=test, total_q=total_q)
+        
+    except Exception as e:
+        if conn: 
+            conn.close()
+        print(f"Error in take_test: {e}")
+        flash("システムエラーが発生しました。")
+        return redirect(url_for('student_dashboard'))
+
 
 @app.route('/student/test/<int:test_id>/submit', methods=['GET', 'POST'])
 def submit_test(test_id):
     if session.get('role') != 'student':
         return redirect(url_for('login'))
     
-    # セッションからユーザーの回答を取得
     user_answers = session.get('answers', {})
     
     conn = None
@@ -618,7 +473,6 @@ def submit_test(test_id):
         conn = get_db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # 全問題を取得（q_no でソート）
         cur.execute("SELECT id, q_no, category, answer FROM questions WHERE test_id = %s ORDER BY q_no", (test_id,))
         questions = cur.fetchall()
         
@@ -626,10 +480,6 @@ def submit_test(test_id):
         correct_count = 0
         genre_stats = {}
         
-        print(f"【デバッグ】提出処理開始: test_id={test_id}, 総問題数={total_q}")
-        print(f"【デバッグ】ユーザー回答: {user_answers}")
-        
-        # 全ての問題を集計（未回答は不正解として扱う）
         for q in questions:
             q_no = str(q['q_no'])
             category = q['category'] or '未分類'
@@ -638,30 +488,20 @@ def submit_test(test_id):
                 genre_stats[category] = {'correct': 0, 'total': 0}
             genre_stats[category]['total'] += 1
             
-            # 回答を取得（未回答の場合は空文字）
             user_answer = user_answers.get(q_no, '')
             correct_answer = str(q['answer']) if q['answer'] else ''
             
-            print(f"【デバッグ】問題{q_no}: ユーザー回答='{user_answer}', 正解='{correct_answer}'")
-            
-            # 回答があり、かつ正解の場合のみカウント
             if user_answer and user_answer == correct_answer:
                 correct_count += 1
                 genre_stats[category]['correct'] += 1
         
-        # 分析データを作成
         analysis = {
             "labels": list(genre_stats.keys()),
             "scores": [int((genre_stats[g]['correct'] / genre_stats[g]['total']) * 100) if genre_stats[g]['total'] > 0 else 0 for g in genre_stats]
         }
         
-        # 総スコア計算（100点満点）
         final_score = int((correct_count / total_q) * 100) if total_q > 0 else 0
         
-        print(f"【デバッグ】正解数: {correct_count}/{total_q}, スコア: {final_score}")
-        print(f"【デバッグ】分析結果: {analysis}")
-        
-        # 結果を保存
         cur.execute('''
             INSERT INTO results (user_id, test_id, score, details, timestamp) 
             VALUES (%s, %s, %s, %s, NOW()) RETURNING id
@@ -669,11 +509,9 @@ def submit_test(test_id):
         
         result_id = cur.fetchone()['id']
         conn.commit()
-        
         cur.close()
         conn.close()
         
-        # セッションの回答データとタイマーをクリア
         session.pop('answers', None)
         session.pop('current_test_id', None)
         
@@ -691,7 +529,7 @@ def submit_test(test_id):
         flash("採点処理中にエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
 
-# --- 結果表示用 ---
+
 @app.route('/student/test/<int:test_id>/result/<int:result_id>')
 def show_result(test_id, result_id):
     if session.get('role') != 'student':
@@ -702,7 +540,6 @@ def show_result(test_id, result_id):
         conn = get_db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # 結果を取得
         cur.execute('''
             SELECT r.*, u.name as student_name 
             FROM results r 
@@ -712,7 +549,6 @@ def show_result(test_id, result_id):
         
         res = cur.fetchone()
         
-        # テスト名を取得
         cur.execute('SELECT name FROM tests WHERE id = %s', (test_id,))
         test = cur.fetchone()
         test_name = test['name'] if test else "不明なテスト"
@@ -724,10 +560,8 @@ def show_result(test_id, result_id):
             flash("結果が見つかりません。")
             return redirect(url_for('student_dashboard'))
 
-        # detailsの解析
         details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
         
-        # GeminiでAIコメントを生成
         ai_comment = generate_ai_comment_with_gemini(
             score=res['score'],
             details_data=details_data,
@@ -735,7 +569,6 @@ def show_result(test_id, result_id):
             test_name=test_name
         )
         
-        # コメントを結果に追加
         res['comment'] = ai_comment
         
         return render_template('result_page.html', res=res, details=details_data)
@@ -750,93 +583,24 @@ def show_result(test_id, result_id):
         return redirect(url_for('student_dashboard'))
 
 
-@app.route('/student/test/<int:test_id>/abandon', methods=['POST'])
-def abandon_test(test_id):
-    """試験を放棄してセッションをクリア"""
-    try:
-        # セッションをクリア
-        session.pop('answers', None)
-        session.pop('current_test_id', None)
-        
-        # タイマー情報も削除（localStorageはJS側で削除）
-        
-        print(f"【セッション削除】ユーザー {session.get('user_id')} が試験 {test_id} を放棄しました")
-        
-        return jsonify({'status': 'ok', 'message': 'Session cleared'})
-        
-    except Exception as e:
-        print(f"【エラー】abandon_test: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-
-
-@app.route('/student/test/<int:test_id>/check_session', methods=['GET'])
-def check_test_session(test_id):
-    """セッションの有効性をチェック"""
-    if session.get('current_test_id') != test_id:
-        # セッションが無効
-        return jsonify({'valid': False, 'redirect': url_for('login')})
-    
-    # タイマーの残り時間をチェック
-    return jsonify({'valid': True})
-
-
-
-
-def reset_question_sequence():
-    """questionsテーブルのIDシーケンスをリセットする"""
-    conn = None
-    try:
-        conn = get_db()
-        cur = conn.cursor()
-        
-        # 現在の最大IDを取得
-        cur.execute("SELECT COALESCE(MAX(id), 0) FROM questions")
-        max_id = cur.fetchone()[0]
-        
-        # シーケンスをリセット
-        cur.execute(f"ALTER SEQUENCE questions_id_seq RESTART WITH {max_id + 1}")
-        conn.commit()
-        
-        cur.close()
-        conn.close()
-        print(f"【シーケンスリセット】questions_id_seq を {max_id + 1} に設定しました")
-        return True
-    except Exception as e:
-        print(f"【エラー】シーケンスリセット失敗: {e}")
-        if conn:
-            conn.close()
-        return False
-    
-#デバッグ用の確認ルート（問題の状態を確認）
-@app.route('/debug/test/<int:test_id>/check', methods=['GET'])
-def debug_test_check(test_id):
-    if session.get('role') != 'teacher':
-        return jsonify({'error': 'Unauthorized'}), 401
-    
+@app.route('/student/test/<int:test_id>/cheated', methods=['POST'])
+def cheated_test(test_id):
     conn = get_db()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    
-    # テスト情報
-    cur.execute('SELECT * FROM tests WHERE id = %s', (test_id,))
-    test = cur.fetchone()
-    
-    # 問題一覧
-    cur.execute('SELECT id, q_no, category, answer FROM questions WHERE test_id = %s ORDER BY q_no', (test_id,))
-    questions = cur.fetchall()
-    
+    cur = conn.cursor()
+    cur.execute('INSERT INTO results (test_id, user_id, score, comment) VALUES (%s, %s, %s, %s)',
+                (test_id, session.get('user_id'), 0, "失格"))
+    conn.commit()
     cur.close()
     conn.close()
-    
-    return jsonify({
-        'test': test,
-        'total_questions': len(questions),
-        'questions': questions
-    })
+    return jsonify({'status': 'ok', 'redirect_url': url_for('student_dashboard')})
+
 
 @app.route('/api/student/test/<int:test_id>/get_question/<int:q_no>', methods=['GET', 'POST'])
 def api_get_question(test_id, q_no):
-    if session.get('role') != 'student': return jsonify({'error': 'Unauthorized'}), 401
-    if 'answers' not in session: session['answers'] = {}
+    if session.get('role') != 'student': 
+        return jsonify({'error': 'Unauthorized'}), 401
+    if 'answers' not in session: 
+        session['answers'] = {}
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     if request.method == 'POST':
@@ -875,30 +639,41 @@ def api_get_question(test_id, q_no):
         'status_list': status_list
     })
 
+
+@app.route('/student/test/<int:test_id>/abandon', methods=['POST'])
+def abandon_test(test_id):
+    try:
+        session.pop('answers', None)
+        session.pop('current_test_id', None)
+        print(f"【セッション削除】ユーザー {session.get('user_id')} が試験 {test_id} を放棄しました")
+        return jsonify({'status': 'ok', 'message': 'Session cleared'})
+    except Exception as e:
+        print(f"【エラー】abandon_test: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/student/test/<int:test_id>/check_session', methods=['GET'])
+def check_test_session(test_id):
+    if session.get('current_test_id') != test_id:
+        return jsonify({'valid': False, 'redirect': url_for('login')})
+    return jsonify({'valid': True})
+
+
 @app.route('/password_reset', methods=['GET', 'POST'])
 def password_reset():
     return render_template('password_reset.html')
+
 
 @app.route('/logout')
 def logout():
     session.pop('user_id', None)  
     session.pop('role', None)
-    return redirect(url_for('login')) 
+    return redirect(url_for('login'))
 
-
-# アプリケーションの設定に追加
-app.config.update(
-    SESSION_COOKIE_SECURE = True,  # HTTPSのみ
-    SESSION_COOKIE_HTTPONLY = True,  # JavaScriptからアクセス不可
-    SESSION_COOKIE_SAMESITE = 'Lax',  # CSRF対策
-    PERMANENT_SESSION_LIFETIME = 3600,  # セッション有効期限（秒）
-)
 
 @app.before_request
 def check_session_expiry():
-    """リクエスト前にセッションの有効性をチェック"""
     if session.get('user_id') and session.get('current_test_id'):
-        # セッションが古すぎる場合はクリア
         if session.permanent:
             session.modified = True
 
