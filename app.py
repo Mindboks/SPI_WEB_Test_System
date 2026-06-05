@@ -1,4 +1,4 @@
-#2026-6-6 version2.5.5gemini対応版（オプション対応）
+#2026-6-6 version2.5.6all
 
 # -*- coding: utf-8 -*-
 import os
