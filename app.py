@@ -1,4 +1,4 @@
-#2026-6-6 version2.5.4
+#2026-6-6 version2.5.5gemini対応版
 
 # -*- coding: utf-8 -*-
 import os
@@ -8,6 +8,18 @@ import hashlib
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+import google.generativeai as genai
+
+# 環境変数からAPIキーを取得（Renderの環境変数に設定）
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+
+# Geminiの設定
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+else:
+    gemini_model = None
+    print("【警告】GEMINI_API_KEYが設定されていません。ダミーコメントを使用します。")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # --- 1. アプリと設定の初期化 ---
@@ -468,7 +480,109 @@ def take_test(test_id):
         print(f"Error in take_test: {e}")
         flash("システムエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
+
+
+def generate_ai_comment_with_gemini(score, details_data, student_name, test_name):
+    """より詳細なGeminiコメント生成"""
     
+    if not gemini_model:
+        return generate_ai_comment(score, details_data)
+    
+    labels = details_data.get('labels', [])
+    scores = details_data.get('scores', [])
+    
+    # 成績の統計情報
+    avg_score = sum(scores) / len(scores) if scores else 0
+    max_category = labels[scores.index(max(scores))] if scores else "なし"
+    min_category = labels[scores.index(min(scores))] if scores else "なし"
+    
+    category_results = "\n".join([f"- {labels[i]}: {scores[i]}%" for i in range(len(labels)) if i < len(scores)])
+    
+    prompt = f"""
+あなたは経験豊富な教育カウンセラーです。以下の学生の試験結果を分析し、温かみのある励ましと具体的なアドバイスを日本語で提供してください。
+
+【学生情報】
+名前: {student_name}
+受験した試験: {test_name}
+
+【成績データ】
+総合得点: {score}点 / 100点
+カテゴリー別正解率:
+{category_results}
+
+【統計情報】
+平均正解率: {avg_score:.1f}%
+最も得意な分野: {max_category}
+最も苦手な分野: {min_category}
+
+【出力形式】
+以下の4つのセクションに分けて、合計200〜250字程度で回答してください：
+
+💡 **総合評価**
+（学生の頑張りを認めつつ、率直な評価を1-2文で）
+
+⭐ **強み**
+（得意な分野と、その強みをどう活かせるかのアドバイス）
+
+📚 **改善ポイント**
+（苦手な分野と、具体的な学習方法の提案）
+
+🎯 **次のステップ**
+（今後どのように学習を進めるべきかの具体的なアドバイス）
+
+全体として、学生のモチベーションが上がるような前向きな表現を心がけてください。
+"""
+    
+    try:
+        response = gemini_model.generate_content(prompt)
+        comment = response.text
+        return comment
+    except Exception as e:
+        print(f"【Geminiエラー】: {e}")
+        return generate_ai_comment(score, details_data)
+
+
+def generate_ai_comment(score, details_data):
+    """フォールバック用の従来型コメント生成"""
+    labels = details_data.get('labels', [])
+    scores = details_data.get('scores', [])
+    
+    if score >= 90:
+        level = "優秀"
+        message = "非常に高いレベルです。素晴らしい結果です！"
+    elif score >= 75:
+        level = "良好"
+        message = "安定した実力があります。"
+    elif score >= 60:
+        level = "合格"
+        message = "合格ラインです。さらなる向上を目指しましょう。"
+    elif score >= 40:
+        level = "要改善"
+        message = "基礎的な部分の復習が必要です。"
+    else:
+        level = "要注意"
+        message = "学習方法の見直しが必要です。"
+    
+    strengths = [labels[i] for i in range(len(labels)) if i < len(scores) and scores[i] >= 70]
+    weaknesses = [labels[i] for i in range(len(labels)) if i < len(scores) and scores[i] <= 40]
+    
+    comment = f"【総合評価: {level}】\n{message}\n\n"
+    
+    if strengths:
+        comment += f"【強み】\n{', '.join(strengths)} の分野が得意です。\n\n"
+    
+    if weaknesses:
+        comment += f"【改善ポイント】\n{', '.join(weaknesses)} の分野を復習しましょう。\n\n"
+    
+    if score >= 75:
+        comment += "【アドバイス】\nこの調子で学習を続けてください。"
+    elif score >= 60:
+        comment += "【アドバイス】\n弱点分野を集中的に学習しましょう。"
+    else:
+        comment += "【アドバイス】\n基礎問題を繰り返し解くことから始めましょう。"
+    
+    return comment
+
 # 試験終了（提出）処理ルート
 def calculate_analysis(test_id, user_answers):
     conn = get_db()
@@ -588,7 +702,7 @@ def show_result(test_id, result_id):
         conn = get_db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # JOINを使用してデータを取得
+        # 結果を取得
         cur.execute('''
             SELECT r.*, u.name as student_name 
             FROM results r 
@@ -597,6 +711,12 @@ def show_result(test_id, result_id):
         ''', (result_id, session.get('user_id')))
         
         res = cur.fetchone()
+        
+        # テスト名を取得
+        cur.execute('SELECT name FROM tests WHERE id = %s', (test_id,))
+        test = cur.fetchone()
+        test_name = test['name'] if test else "不明なテスト"
+        
         cur.close()
         conn.close()
         
@@ -606,12 +726,26 @@ def show_result(test_id, result_id):
 
         # detailsの解析
         details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
+        
+        # GeminiでAIコメントを生成
+        ai_comment = generate_ai_comment_with_gemini(
+            score=res['score'],
+            details_data=details_data,
+            student_name=res['student_name'],
+            test_name=test_name
+        )
+        
+        # コメントを結果に追加
+        res['comment'] = ai_comment
+        
         return render_template('result_page.html', res=res, details=details_data)
 
     except Exception as e:
-        # 万が一エラーが起きても、アプリが白紙にならずログを残してダッシュボードに戻す
-        if conn: conn.close()
+        if conn:
+            conn.close()
         print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
         flash("結果の表示中にエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
 

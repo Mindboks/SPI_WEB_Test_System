@@ -13,7 +13,7 @@
     <style>
         * { box-sizing: border-box; }
         body {
-            background-color: #0b0f19; /* 深みのあるダークネイビー */
+            background-color: #0b0f19;
             margin: 0;
             padding: 0;
             display: flex;
@@ -21,11 +21,10 @@
             align-items: center;
             min-height: 100vh;
             font-family: 'Noto Sans JP', sans-serif;
-            overflow: hidden; /* 15インチ画面で全体のスクロールバーを抑止 */
+            overflow: hidden;
             color: #f8fafc;
         }
 
-        /* 15インチPC（1280x720〜1920x1080）の比率で綺麗に収まるコンテナ */
         .slide-container {
             width: 100vw;
             height: 100vh;
@@ -37,12 +36,11 @@
             position: relative;
         }
 
-        /* ヘッダーエリア */
         .header-area {
             display: flex;
             justify-content: space-between;
             align-items: flex-end;
-            border-bottom: 2px solid #10b981; /* テック感のあるエメラルドグリーン */
+            border-bottom: 2px solid #10b981;
             padding-bottom: 1.5vh;
             margin-bottom: 2.5vh;
             flex-shrink: 0;
@@ -64,7 +62,6 @@
             font-weight: 700;
         }
 
-        /* 総合スコアバッジ */
         .total-score-badge {
             text-align: right;
             background: linear-gradient(135deg, #1e293b, #0f172a);
@@ -82,16 +79,14 @@
             line-height: 1;
         }
 
-        /* メインレイアウト（50 / 50 の分割） */
         .main-content {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 3vw;
             flex-grow: 1;
-            min-height: 0; /* 子要素の高さ破綻を防ぐ */
+            min-height: 0;
         }
 
-        /* 左側：レーダーチャートエリア（最大化） */
         .left-panel {
             background: rgba(255, 255, 255, 0.03);
             border-radius: 20px;
@@ -108,7 +103,6 @@
             position: relative;
         }
 
-        /* 右側：インフォメーションエリア */
         .right-panel {
             display: flex;
             flex-direction: column;
@@ -116,13 +110,12 @@
             min-height: 0;
         }
 
-        /* カードの共通デザイン */
         .info-card {
             background: rgba(255, 255, 255, 0.03);
             border-radius: 20px;
             border: 1px solid rgba(255, 255, 255, 0.08);
             padding: 2.5vh;
-            flex: 1; /* 左右同じ大きさ、右側内でも1:1の均等配置 */
+            flex: 1;
             display: flex;
             flex-direction: column;
             min-height: 0;
@@ -139,7 +132,6 @@
             flex-shrink: 0;
         }
 
-        /* カテゴリー別テーブル */
         .table-area {
             overflow-y: auto;
             flex-grow: 1;
@@ -170,24 +162,21 @@
             font-weight: 700;
         }
 
-        /* AIアドバイスボックス */
         .ai-comment-box {
             font-size: 1rem;
             line-height: 1.6;
             color: #cbd5e1;
             overflow-y: auto;
             flex-grow: 1;
-            white-space: pre-wrap; /* 改行を有効にする */
+            white-space: pre-wrap;
             padding-right: 5px;
         }
 
-        /* スクロールバーのスマート化 */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #475569; }
 
-        /* フッター */
         .footer-bar {
             margin-top: 1.5vh;
             display: flex;
@@ -197,7 +186,6 @@
             flex-shrink: 0;
         }
 
-        /* ダッシュボードに戻るボタン */
         .back-btn {
             background-color: transparent;
             color: #94a3b8;
@@ -217,45 +205,37 @@
             border-color: #475569;
         }
         
-    /* スマホ対応：画面幅が768px以下の時のレイアウト調整 */
-    @media (max-width: 768px) {
-        body {
-            overflow-y: auto; /* スマホではスクロールを許可 */
-            min-height: auto;
-            padding: 15px;
+        @media (max-width: 768px) {
+            body {
+                overflow-y: auto;
+                min-height: auto;
+                padding: 15px;
+            }
+            .slide-container {
+                height: auto;
+            }
+            .main-content {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            .left-panel {
+                height: 300px;
+            }
+            .info-card {
+                flex: none;
+                height: auto;
+                min-height: 200px;
+            }
+            .header-area {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            .total-score-badge {
+                text-align: left;
+                width: 100%;
+            }
         }
-
-        .slide-container {
-            height: auto; /* 高さを自動調整に */
-        }
-
-        .main-content {
-            grid-template-columns: 1fr; /* 1列に変更 */
-            gap: 15px;
-        }
-
-        .left-panel {
-            height: 300px; /* チャートの高さをスマホ用に固定 */
-        }
-
-        .info-card {
-            flex: none;
-            height: auto;
-            min-height: 200px; /* アドバイス枠の最低高を確保 */
-        }
-
-        .header-area {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 10px;
-        }
-        
-        .total-score-badge {
-            text-align: left;
-            width: 100%;
-        }
-    }
-
     </style>
 </head>
 <body>
@@ -311,10 +291,12 @@
             </div>
         </div>
     </div>
+    
     <div id="chart-data" 
-     data-labels="{{ details.labels | tojson }}" 
-     data-scores="{{ details.scores | tojson }}" 
-     style="display:none;"></div>
+         data-labels="{{ details.labels | tojson }}" 
+         data-scores="{{ details.scores | tojson }}" 
+         style="display:none;"></div>
+    
     <footer class="footer-bar">
         <div>
             <a href="{{ url_for('student_dashboard') }}" class="back-btn"><i class="fa-solid fa-arrow-left"></i> ダッシュボードに戻る</a>
@@ -326,56 +308,114 @@
 </div>
 
 <script>
-    const ctx = document.getElementById('radarChart').getContext('2d');
-    
-    // Python (Flask) から渡されたデータをパース
-    /* jshint ignore:start */
-    const dataElement = document.getElementById('chart-data');
-    const labels = JSON.parse(dataElement.getAttribute('data-labels'));
-    const scores = JSON.parse(dataElement.getAttribute('data-scores'));
-
-// あとはこれを使ってChart.jsを初期化
-    /* jshint ignore:end */
-    new Chart(ctx, {
-        type: 'radar',
-        data: {
-            labels: labels,
-            datasets: [{
-                data: scores,
-                backgroundColor: 'rgba(16, 185, 129, 0.15)', /* 透明度を抑えた美しい緑 */
-                borderColor: '#10b981',
-                borderWidth: 3,
-                pointBackgroundColor: '#ffffff',
-                pointBorderColor: '#10b981',
-                pointRadius: 5,
-                pointHoverRadius: 7,
-                fill: true
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false } /* 1データのため凡例は非表示 */
+    (function() {
+        // チャート要素を取得
+        const canvas = document.getElementById('radarChart');
+        if (!canvas) {
+            console.error('radarChart要素が見つかりません');
+            return;
+        }
+        
+        const ctx = canvas.getContext('2d');
+        const dataElement = document.getElementById('chart-data');
+        
+        if (!dataElement) {
+            console.error('chart-data要素が見つかりません');
+            return;
+        }
+        
+        // データを取得してパース
+        let labels = [];
+        let scores = [];
+        
+        try {
+            const labelsAttr = dataElement.getAttribute('data-labels');
+            const scoresAttr = dataElement.getAttribute('data-scores');
+            
+            console.log('【デバッグ】data-labels:', labelsAttr);
+            console.log('【デバッグ】data-scores:', scoresAttr);
+            
+            labels = JSON.parse(labelsAttr || '[]');
+            scores = JSON.parse(scoresAttr || '[]');
+            
+            console.log('【デバッグ】カテゴリー:', labels);
+            console.log('【デバッグ】正解率:', scores);
+            console.log('【デバッグ】カテゴリー数:', labels.length);
+            
+        } catch(e) {
+            console.error('データ解析エラー:', e);
+            labels = ['データがありません'];
+            scores = [0];
+        }
+        
+        // データがない場合のデフォルト表示
+        if (labels.length === 0) {
+            labels = ['データがありません'];
+            scores = [0];
+        }
+        
+        // チャートを描画
+        new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: '正解率 (%)',
+                    data: scores,
+                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                    borderColor: '#10b981',
+                    borderWidth: 3,
+                    pointBackgroundColor: '#ffffff',
+                    pointBorderColor: '#10b981',
+                    pointRadius: 5,
+                    pointHoverRadius: 7,
+                    fill: true
+                }]
             },
-            scales: {
-                r: {
-                    angleLines: { color: 'rgba(255,255,255,0.15)' },
-                    grid: { color: 'rgba(255,255,255,0.15)' },
-                    pointLabels: {
-                        color: '#f8fafc',
-                        font: { size: 14, weight: '700', family: 'Noto Sans JP' }
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { 
+                        display: !(labels.length === 1 && labels[0] === 'データがありません')
                     },
-                    ticks: { 
-                        display: false, /* 目盛り数字は消してすっきりさせる */
-                        stepSize: 20 
-                    },
-                    suggestedMin: 0,
-                    suggestedMax: 100
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.label}: ${context.raw}%`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    r: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            stepSize: 20,
+                            backdropColor: 'transparent'
+                        },
+                        grid: {
+                            color: 'rgba(255,255,255,0.15)'
+                        },
+                        angleLines: {
+                            color: 'rgba(255,255,255,0.15)'
+                        },
+                        pointLabels: {
+                            color: '#f8fafc',
+                            font: {
+                                size: 12,
+                                weight: 'bold',
+                                family: 'Noto Sans JP'
+                            }
+                        }
+                    }
                 }
             }
-        }
-    });
+        });
+        
+        console.log('【デバッグ】レーダーチャート描画完了');
+    })();
 </script>
 
 </body>
