@@ -1,5 +1,4 @@
-#2026-6-6 version2.5.6all
-
+#2026-6-6 version2.5.7
 # -*- coding: utf-8 -*-
 import os
 import csv
@@ -8,7 +7,6 @@ import hashlib
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
-
 # Geminiはオプション（パッケージがない場合はスキップ）
 GEMINI_AVAILABLE = False
 gemini_model = None
@@ -33,6 +31,29 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'default_secret_key_for_production')
 DATABASE_URL = os.environ.get('DATABASE_URL')
+
+# セッション設定（有効期限を短めに）
+app.config.update(
+    SESSION_COOKIE_SECURE = False,
+    SESSION_COOKIE_HTTPONLY = True,
+    SESSION_COOKIE_SAMESITE = 'Lax',
+    PERMANENT_SESSION_LIFETIME = 1800,  # 30分に短縮
+)
+
+# リクエスト前に毎回セッションをチェック
+@app.before_request
+def before_request():
+    # 静的ファイルはスキップ
+    if request.path.startswith('/static'):
+        return
+    
+    # ログイン画面とログアウト処理はスキップ
+    if request.path in ['/', '/login', '/logout', '/register', '/password_reset']:
+        return
+    
+    # セッションがない場合はログイン画面へ
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
 
 # アプリケーションの設定
 app.config.update(
@@ -188,16 +209,50 @@ def login():
 
 @app.route('/')
 def index():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
+    # 常にセッションをクリアしてログイン画面へ
+    session.clear()
+    return redirect(url_for('login'))
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    # GETリクエストの場合はセッションをクリア
+    if request.method == 'GET':
+        session.clear()
     
-    user_role = session.get('role')
-    if user_role == 'teacher':
-        return redirect(url_for('teacher_admin'))
-    elif user_role == 'student':
-        return redirect(url_for('student_dashboard'))
-    
-    return redirect(url_for('logout'))
+    if request.method == 'POST':
+        u_id = request.form.get('id', '').strip()
+        pwd = request.form.get('password')
+        hashed_pwd = hash_password(pwd)
+        
+        try:
+            conn = get_db()
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute('SELECT * FROM users WHERE id = %s', (u_id,))
+            user = cur.fetchone()
+            cur.close()
+            conn.close()
+            
+            if user and user['password'] == hashed_pwd:
+                session.clear()
+                session.update({
+                    'user_id': user['id'], 
+                    'user_name': user['name'], 
+                    'role': user['role'],
+                    'class_id': user.get('class_id') 
+                })
+                # ロールに応じてリダイレクト
+                if user['role'] == 'teacher':
+                    return redirect(url_for('teacher_admin'))
+                else:
+                    return redirect(url_for('student_dashboard'))
+            else:
+                flash("IDまたはパスワードが間違っています")
+        except Exception as e:
+            print(f"ログインエラー: {e}")
+            flash("システムエラーが発生しました")
+            
+    return render_template('login.html')
 
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -666,8 +721,8 @@ def password_reset():
 
 @app.route('/logout')
 def logout():
-    session.pop('user_id', None)  
-    session.pop('role', None)
+    # セッションを完全にクリア
+    session.clear()
     return redirect(url_for('login'))
 
 
