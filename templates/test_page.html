@@ -100,6 +100,151 @@
     const testId = "{{ test.id }}";
     let isCheated = false;
 
+    // ========== ページ離脱・タブ閉じ時の処理 ==========
+
+    // 1. ページを離れる前の警告とセッションクリア
+    window.addEventListener("beforeunload", function(e) {
+        if (localStorage.getItem("exam_end_time_id_" + testId)) {
+            // 試験中の場合は警告を表示
+            e.preventDefault();
+            e.returnValue = "試験中です。ページを離れると不正行為とみなされ、強制終了となります。";
+            
+            // サーバーにセッション削除を通知（同期リクエスト）
+            navigator.sendBeacon(`/student/test/${testId}/abandon`);
+            
+            return e.returnValue;
+        }
+    });
+
+    // 2. ページがアンロードされる直前に実行
+    window.addEventListener("pagehide", function() {
+        if (localStorage.getItem("exam_end_time_id_" + testId)) {
+            navigator.sendBeacon(`/student/test/${testId}/abandon`);
+        }
+    });
+
+    // 3. ブラウザの戻るボタン対策（履歴を書き換え）
+    history.pushState(null, null, location.href);
+    window.addEventListener('popstate', function(event) {
+        if (localStorage.getItem("exam_end_time_id_" + testId)) {
+            // 戻るボタンが押されたら強制的に現在のページに戻す
+            history.pushState(null, null, location.href);
+            alert("試験中のページ遷移は禁止されています。");
+            
+            // サーバーに通知
+            navigator.sendBeacon(`/student/test/${testId}/abandon`);
+        }
+    });
+
+    // 4. タブやブラウザが閉じられた時の処理
+    window.addEventListener("unload", function() {
+        if (localStorage.getItem("exam_end_time_id_" + testId)) {
+            navigator.sendBeacon(`/student/test/${testId}/abandon`);
+        }
+    });
+
+    // ========== 定期的なセッションチェック ==========
+    function checkSessionValidity() {
+        fetch(`/student/test/${testId}/check_session`)
+            .then(res => res.json())
+            .then(data => {
+                if (!data.valid) {
+                    // セッションが無効な場合はログイン画面へ
+                    alert("セッションが期限切れになりました。再度ログインしてください。");
+                    localStorage.removeItem("exam_end_time_id_" + testId);
+                    window.location.href = data.redirect || "/login";
+                }
+            })
+            .catch(() => {
+                // エラー時もログイン画面へ
+                window.location.href = "/login";
+            });
+    }
+
+    // 30秒ごとにセッションチェック
+    setInterval(checkSessionValidity, 30000);
+
+    // ========== 完全なページ離脱対策 ==========
+
+    // 試験中のフラグをチェック
+    const isExamActive = () => localStorage.getItem("exam_end_time_id_" + testId) !== null;
+
+    // 1. ページ離脱時の処理
+    function handlePageLeave() {
+        if (isExamActive()) {
+            // サーバーにセッション削除を通知
+            navigator.sendBeacon(`/student/test/${testId}/abandon`);
+            // ローカルのタイマー情報を削除
+            localStorage.removeItem("exam_end_time_id_" + testId);
+        }
+    }
+
+    // 2. 各種イベントにフック
+    window.addEventListener("beforeunload", function(e) {
+        if (isExamActive()) {
+            e.preventDefault();
+            e.returnValue = "試験中です。このページを離れると、試験は強制終了になります。";
+            handlePageLeave();
+            return e.returnValue;
+        }
+    });
+
+    window.addEventListener("pagehide", handlePageLeave);
+    window.addEventListener("unload", handlePageLeave);
+
+    // 3. ブラウザの戻る/進むボタン対策
+    history.pushState(null, null, location.href);
+    window.addEventListener('popstate', function(event) {
+        if (isExamActive()) {
+            // 戻るボタンを無効化（再度現在のページをプッシュ）
+            history.pushState(null, null, location.href);
+            alert("試験中のページ遷移は禁止されています。試験を続行してください。");
+            
+            // サーバーに通知（不正行為として記録することも可能）
+            fetch(`/student/test/${testId}/cheated`, { 
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ reason: 'page_navigation' })
+            }).catch(() => {});
+        }
+    });
+
+    // 4. タブの可視性変更時の処理（別タブに移動した場合）
+    document.addEventListener("visibilitychange", function() {
+        if (document.hidden && isExamActive()) {
+            // 別タブに移動した場合の警告（オプション）
+            console.log("試験中に別タブに移動しました");
+            // 必要に応じてサーバーに通知
+        }
+    });
+
+    // 5. F5リロードやCtrl+R対策
+    window.addEventListener("keydown", function(e) {
+        if (isExamActive()) {
+            // F5またはCtrl+R/Ctrl+Shift+Rを検出
+            if (e.key === "F5" || 
+                (e.ctrlKey && e.key === "r") || 
+                (e.ctrlKey && e.shiftKey && e.key === "R")) {
+                e.preventDefault();
+                alert("試験中のリロードは禁止されています。");
+                return false;
+            }
+        }
+    });
+
+    // 6. 右クリックメニューを無効化（オプション）
+    if (isExamActive()) {
+        document.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            return false;
+        });
+    }
+
+
+
+
+
+
 
 // ページを離れようとした時の警告
 window.addEventListener("beforeunload", function(e) {

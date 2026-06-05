@@ -1,4 +1,4 @@
-#2026-6-6 version2.5.3
+#2026-6-6 version2.5.4
 
 # -*- coding: utf-8 -*-
 import os
@@ -614,7 +614,40 @@ def show_result(test_id, result_id):
         print(f"Error: {e}")
         flash("結果の表示中にエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
+
+
+@app.route('/student/test/<int:test_id>/abandon', methods=['POST'])
+def abandon_test(test_id):
+    """試験を放棄してセッションをクリア"""
+    try:
+        # セッションをクリア
+        session.pop('answers', None)
+        session.pop('current_test_id', None)
+        
+        # タイマー情報も削除（localStorageはJS側で削除）
+        
+        print(f"【セッション削除】ユーザー {session.get('user_id')} が試験 {test_id} を放棄しました")
+        
+        return jsonify({'status': 'ok', 'message': 'Session cleared'})
+        
+    except Exception as e:
+        print(f"【エラー】abandon_test: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/student/test/<int:test_id>/check_session', methods=['GET'])
+def check_test_session(test_id):
+    """セッションの有効性をチェック"""
+    if session.get('current_test_id') != test_id:
+        # セッションが無効
+        return jsonify({'valid': False, 'redirect': url_for('login')})
     
+    # タイマーの残り時間をチェック
+    return jsonify({'valid': True})
+
+
+
+
 def reset_question_sequence():
     """questionsテーブルのIDシーケンスをリセットする"""
     conn = None
@@ -717,6 +750,24 @@ def logout():
     session.pop('user_id', None)  
     session.pop('role', None)
     return redirect(url_for('login')) 
+
+
+# アプリケーションの設定に追加
+app.config.update(
+    SESSION_COOKIE_SECURE = True,  # HTTPSのみ
+    SESSION_COOKIE_HTTPONLY = True,  # JavaScriptからアクセス不可
+    SESSION_COOKIE_SAMESITE = 'Lax',  # CSRF対策
+    PERMANENT_SESSION_LIFETIME = 3600,  # セッション有効期限（秒）
+)
+
+@app.before_request
+def check_session_expiry():
+    """リクエスト前にセッションの有効性をチェック"""
+    if session.get('user_id') and session.get('current_test_id'):
+        # セッションが古すぎる場合はクリア
+        if session.permanent:
+            session.modified = True
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
