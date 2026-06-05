@@ -1,4 +1,4 @@
-#2026-6-5 version2.4.7
+#2026-6-5 version2.4.8
 
 # -*- coding: utf-8 -*-
 import os
@@ -214,24 +214,29 @@ def teacher_admin():
                 reader = csv.DictReader(stream)
                 
                 for row in reader:
-                    # ★重要：CSV内のid情報を強制的に削除する
-                    if 'id' in row:
-                        del row['id']
+                    # 1. 不要なカラムの削除
+                    row.pop('id', None)
                     
-                    # データを整理して登録
+                    # 2. 選択肢を自動抽出 (Answer_1 ～ Answer_10 を辞書にまとめる)
+                    options_dict = {
+                        f"a{i}": row.get(f'Answer_{i}') 
+                        for i in range(1, 11) 
+                        if row.get(f'Answer_{i}')
+                    }
+                    
+                    # 3. INSERT実行
                     cur.execute('''
-                        INSERT INTO questions (test_id, q_no, category, question, target, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, answer, explanation)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        INSERT INTO questions (
+                            test_id, q_no, category, question, target, 
+                            options, answer, explanation
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     ''', (
                         new_test_id, 
                         row.get('test_number'), 
                         row.get('test genre'), 
                         row.get('test questions'), 
                         row.get('target', ''),
-                        row.get('Answer_1', ''), row.get('Answer_2', ''), row.get('Answer_3', ''), 
-                        row.get('Answer_4', ''), row.get('Answer_5', ''), row.get('Answer_6', ''), 
-                        row.get('Answer_7', ''), row.get('Answer_8', ''), row.get('Answer_9', ''), 
-                        row.get('Answer_10', ''), 
+                        json.dumps(options_dict), # JSONとして保存
                         row.get('Answer'), 
                         row.get('Test explanation', '')
                     ))
