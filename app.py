@@ -1,4 +1,4 @@
-#2026-6-5 version2.4.9db
+#2026-6-5 version2.5.1
 
 # -*- coding: utf-8 -*-
 import os
@@ -208,18 +208,22 @@ def teacher_admin():
                 conn = get_db()
                 cur = conn.cursor()
                 
-                # 現在の最大IDを取得して手動で採番
+                # ========== 1. testsテーブルのIDを手動採番 ==========
                 cur.execute("SELECT COALESCE(MAX(id), 0) FROM tests")
-                max_id = cur.fetchone()[0]
-                new_test_id = max_id + 1
+                max_test_id = cur.fetchone()[0]
+                new_test_id = max_test_id + 1
                 
-                # IDを明示的に指定してINSERT
                 cur.execute('''
                     INSERT INTO tests (id, name, target_class, duration) 
                     VALUES (%s, %s, %s, %s)
                 ''', (new_test_id, t_name, t_class, t_duration))
                 
-                # CSVファイルの読み込み
+                # ========== 2. questionsテーブルの現在の最大IDを取得 ==========
+                cur.execute("SELECT COALESCE(MAX(id), 0) FROM questions")
+                max_q_id = cur.fetchone()[0]
+                next_q_id = max_q_id + 1  # 次のIDの開始値
+                
+                # ========== 3. CSVファイルの読み込み ==========
                 import io
                 import csv
                 import re
@@ -240,7 +244,6 @@ def teacher_admin():
                 
                 # カラム名を動的に検出する関数
                 def find_column(reader, patterns):
-                    """パターンに一致するカラム名を検索"""
                     for pattern in patterns:
                         for col in reader.fieldnames:
                             if pattern.lower() in col.lower() or col == pattern:
@@ -255,21 +258,15 @@ def teacher_admin():
                 answer_col = find_column(reader, ['A-Z answer', 'answer', '正解', 'Answer'])
                 explanation_col = find_column(reader, ['Test explanation', 'explanation', '解説'])
                 
-                # 選択肢のカラムを動的に検出（a1〜a10 または A-Z a1〜A-Z a10）
+                # 選択肢のカラムを動的に検出
                 choice_columns = []
-                for i in range(1, 11):  # 1〜10まで
-                    # 複数のパターンに対応
+                for i in range(1, 11):
                     patterns = [
                         f'a{i}', f'A-Z a{i}', f'Answer_{i}', f'選択肢{i}',
                         f'option{i}', f'Option{i}', f'OPTION{i}'
                     ]
-                    for pattern in patterns:
-                        found = find_column(reader, [pattern])
-                        if found:
-                            choice_columns.append(found)
-                            break
-                    else:
-                        choice_columns.append(None)  # 見つからない場合はNone
+                    found = find_column(reader, patterns)
+                    choice_columns.append(found)
                 
                 inserted_count = 0
                 skipped_count = 0
@@ -292,7 +289,7 @@ def teacher_admin():
                         skipped_count += 1
                         continue
                     
-                    # 選択肢を取得（値があるものだけ）
+                    # 選択肢を取得
                     a1 = row.get(choice_columns[0], '').strip() if choice_columns[0] else ''
                     a2 = row.get(choice_columns[1], '').strip() if choice_columns[1] else ''
                     a3 = row.get(choice_columns[2], '').strip() if choice_columns[2] else ''
@@ -319,19 +316,20 @@ def teacher_admin():
                     question = row.get(question_col, '').strip() if question_col else ''
                     target = row.get(target_col, '').strip() if target_col else ''
                     
-                    # NULLを空文字に変換
                     def null_to_empty(val):
                         return val if val is not None else ''
                     
-                    # INSERT実行
+                    # ========== 重要: IDを手動で指定してINSERT ==========
                     cur.execute('''
                         INSERT INTO questions (
-                            test_id, q_no, category, question, target, 
+                            id, test_id, q_no, category, question, target, 
                             a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, 
                             answer, explanation
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ''', (
-                        new_test_id, q_no_int, 
+                        next_q_id,  # 手動で採番したID
+                        new_test_id, 
+                        q_no_int, 
                         null_to_empty(category), 
                         null_to_empty(question), 
                         null_to_empty(target),
@@ -340,6 +338,8 @@ def teacher_admin():
                         null_to_empty(answer_val), 
                         null_to_empty(explanation)
                     ))
+                    
+                    next_q_id += 1  # IDをインクリメント
                     inserted_count += 1
                 
                 conn.commit()
@@ -379,7 +379,6 @@ def teacher_admin():
         print(f"データ取得エラー: {e}")
         
     return render_template('admin.html', tests=tests, results=results, classes=classes)
-
 #削除用
 @app.route('/teacher/delete_test/<int:test_id>', methods=['POST'])
 def delete_test(test_id):
