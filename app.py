@@ -254,21 +254,6 @@ def cheated_test(test_id):
         conn.commit()
     return jsonify({'status': 'ok'}) 
 
-@app.route('/delete_test/<int:test_id>', methods=['POST'])
-def delete_test(test_id):
-    if session.get('role') != 'teacher':
-        return redirect(url_for('index'))
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute('DELETE FROM questions WHERE test_id = %s', (test_id,))
-    cur.execute('DELETE FROM results WHERE test_id = %s', (test_id,))
-    cur.execute('DELETE FROM tests WHERE id = %s', (test_id,))
-    conn.commit()
-    cur.close()
-    conn.close()
-    flash('テストと関連データを削除しました。')
-    return redirect(url_for('teacher_admin'))
-
 # 生徒用ダッシュボード（リダイレクト先）
 @app.route('/student_dashboard')
 def student_dashboard():
