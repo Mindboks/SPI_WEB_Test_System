@@ -1,4 +1,4 @@
-#2026-6-5 version2.4.6
+#2026-6-5 version2.4.7
 
 # -*- coding: utf-8 -*-
 import os
@@ -150,8 +150,36 @@ def index():
     # どちらでもない場合は不正なセッションとみなしログアウト
     return redirect(url_for('logout'))
 
+# 新規登録
 @app.route('/register', methods=['GET', 'POST'])
 def register():
+    if request.method == 'POST':
+        u_id = request.form.get('id', '')
+        pwd = request.form.get('password', '')
+
+        # バリデーション：空チェックと長さ制限
+        if not u_id or not pwd:
+            flash("IDとパスワードを入力してください。")
+            return render_template('register.html')
+        
+        if len(u_id) > 20 or len(pwd) > 50:
+            flash("入力内容が長すぎます。")
+            return render_template('register.html')
+
+        hashed_pwd = hash_password(pwd)
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute('UPDATE users SET password = %s WHERE id = %s', (hashed_pwd, u_id))
+            if cur.rowcount == 0:
+                flash("IDが見つかりません。")
+            else:
+                conn.commit()
+                flash("登録が完了しました。")
+            cur.close()
+            conn.close()
+        except Exception as e:
+            flash("システムエラーが発生しました。")
     return render_template('register.html')
 
 @app.route('/teacher/admin', methods=['GET', 'POST'])
@@ -241,21 +269,20 @@ def teacher_admin():
         
     return render_template('admin.html', tests=tests, results=results, classes=classes)
 
-# app.py に追加が必要な削除用ルート
+#削除用
 @app.route('/teacher/delete_test/<int:test_id>', methods=['POST'])
 def delete_test(test_id):
-    if session.get('role') != 'teacher': 
-        return redirect(url_for('index'))
-    
+    if session.get('role') != 'teacher': return redirect(url_for('index'))
     conn = get_db()
     cur = conn.cursor()
-    # 紐づく問題とテストを削除
+    # 削除順序: 結果 → 問題 → テスト
+    cur.execute('DELETE FROM results WHERE test_id = %s', (test_id,))
     cur.execute('DELETE FROM questions WHERE test_id = %s', (test_id,))
     cur.execute('DELETE FROM tests WHERE id = %s', (test_id,))
     conn.commit()
     cur.close()
     conn.close()
-    flash('テストを削除しました。')
+    flash('テストと関連するすべての結果を削除しました。')
     return redirect(url_for('teacher_admin'))
 
 @app.route('/student/test/<int:test_id>/cheated', methods=['POST'])
@@ -358,26 +385,62 @@ def calculate_analysis(test_id, user_answers):
 def submit_test(test_id):
     if session.get('role') != 'student':
         return redirect(url_for('login'))
-    answers = session.get('answers', {})
-    # 分析データを作成(正解率のジャンル別分析など)
-    analysis = calculate_analysis(test_id, answers)
-
-    # スコア計算（正解率の平均などを算出）
-    total_scores = analysis['scores']
-    avg_score = sum(total_scores) / len(total_scores) if total_scores else 0 
+    
+    # セッションからユーザーの回答を取得
+    user_answers = session.get('answers', {})
+    
+    # 1. データベースから全問題の正解を取得してスコアを計算
     conn = get_db()
-    cur = conn.cursor()
-    # 結果を保存
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    # 全問題を取得
+    cur.execute("SELECT id, category, answer FROM questions WHERE test_id = %s", (test_id,))
+    questions = cur.fetchall()
+    
+    total_q = len(questions)
+    correct_count = 0
+    genre_stats = {}
+    
+    # スコア計算と詳細分析の作成
+    for q in questions:
+        q_id = str(q['id'])
+        category = q['category']
+        
+        # ジャンルごとの初期化
+        if category not in genre_stats:
+            genre_stats[category] = {'correct': 0, 'total': 0}
+        genre_stats[category]['total'] += 1
+        
+        # 回答照合
+        if str(user_answers.get(q_id)) == str(q['answer']):
+            correct_count += 1
+            genre_stats[category]['correct'] += 1
+    
+    # 分析データを作成
+    analysis = {
+        "labels": list(genre_stats.keys()),
+        "scores": [int((genre_stats[g]['correct'] / genre_stats[g]['total']) * 100) for g in genre_stats]
+    }
+    
+    # 総スコア計算（100点満点）
+    final_score = int((correct_count / total_q) * 100) if total_q > 0 else 0
+    
+    # 2. 結果を保存
     cur.execute('''
         INSERT INTO results (user_id, test_id, score, details, timestamp) 
         VALUES (%s, %s, %s, %s, NOW()) RETURNING id
-    ''', (session.get('user_id'), test_id, int(avg_score), json.dumps(analysis)))
-    result_id = cur.fetchone()[0]
+    ''', (session.get('user_id'), test_id, final_score, json.dumps(analysis)))
+    
+    result_id = cur.fetchone()['id']
     conn.commit()
+    
     cur.close()
     conn.close()
+    
+    # セッションの回答データをクリア
+    session.pop('answers', None)
+    
     return redirect(url_for('show_result', test_id=test_id, result_id=result_id))
-
 # --- 結果表示用 ---
 @app.route('/student/test/<int:test_id>/result/<int:result_id>')
 def show_result(test_id, result_id):

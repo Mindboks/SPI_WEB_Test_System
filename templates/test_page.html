@@ -136,7 +136,8 @@
                 // バッジと問題文の書き換え
                 document.getElementById("q-no-badge").innerText = `問 ${data.q_no} / 全 ${totalQuestions} 問`;
                 document.getElementById("category-badge").innerText = `カテゴリ: ${data.category}`;
-                document.getElementById("question-text").innerText = data.question;
+
+                document.getElementById("question-text").innerHTML = data.question;
 
                 // 🔴【指定】Target文字列を最上部にセット（空なら非表示）
                 const targetArea = document.getElementById("target-area");
