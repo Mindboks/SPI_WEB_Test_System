@@ -1,4 +1,4 @@
-#2026-6-5 version2.3.5
+#2026-6-5 version2.3.6
 
 # -*- coding: utf-8 -*-
 import os
@@ -186,13 +186,12 @@ def teacher_admin():
                 reader = csv.DictReader(stream)
                 
                 for row in reader:
-
-                    # INSERTからidを完全に排除して、DBの自動採番に委ねる
+                    # idを明示的に指定せず、DB側に自動で番号を振らせます
                     cur.execute('''
                         INSERT INTO questions (test_id, q_no, category, question, target, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, answer, explanation)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ''', (
-                        new_test_id,  # ここからスタート
+                        new_test_id, 
                         row['test_number'], 
                         row['test genre'], 
                         row['test questions'], 
