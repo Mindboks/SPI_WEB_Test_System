@@ -1,13 +1,17 @@
-#2026-6-6 version2.5.7
+#2026-6-6 version2.5.8
+
 # -*- coding: utf-8 -*-
 import os
 import csv
+import io
 import json
 import hashlib
+import re
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
-# Geminiはオプション（パッケージがない場合はスキップ）
+
+# ========== Gemini設定（オプション） ==========
 GEMINI_AVAILABLE = False
 gemini_model = None
 
@@ -27,43 +31,21 @@ except Exception as e:
     print(f"【Gemini】初期化エラー: {e}")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# --- 1. アプリと設定の初期化 ---
+
+# ========== Flaskアプリ設定 ==========
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'default_secret_key_for_production')
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
-# セッション設定（有効期限を短めに）
-app.config.update(
-    SESSION_COOKIE_SECURE = False,
-    SESSION_COOKIE_HTTPONLY = True,
-    SESSION_COOKIE_SAMESITE = 'Lax',
-    PERMANENT_SESSION_LIFETIME = 1800,  # 30分に短縮
-)
-
-# リクエスト前に毎回セッションをチェック
-@app.before_request
-def before_request():
-    # 静的ファイルはスキップ
-    if request.path.startswith('/static'):
-        return
-    
-    # ログイン画面とログアウト処理はスキップ
-    if request.path in ['/', '/login', '/logout', '/register', '/password_reset']:
-        return
-    
-    # セッションがない場合はログイン画面へ
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-
 # アプリケーションの設定
 app.config.update(
-    SESSION_COOKIE_SECURE = False,
-    SESSION_COOKIE_HTTPONLY = True,
-    SESSION_COOKIE_SAMESITE = 'Lax',
-    PERMANENT_SESSION_LIFETIME = 3600,
+    SESSION_COOKIE_SECURE=False,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    PERMANENT_SESSION_LIFETIME=1800,  # 30分
 )
 
-# --- 2. データベース接続関数 ---
+# ========== データベース接続関数 ==========
 def get_db():
     db_url = os.environ.get('DATABASE_URL')
     if not db_url:
@@ -74,6 +56,61 @@ def get_db():
 def hash_password(password):
     return hashlib.sha256((password or "").encode('utf-8')).hexdigest()
 
+def init_db():
+    conn = None
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY, 
+                    name TEXT, 
+                    class_id TEXT, 
+                    password TEXT, 
+                    role TEXT
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS tests (
+                    id SERIAL PRIMARY KEY, 
+                    name TEXT, 
+                    target_class TEXT, 
+                    duration INTEGER DEFAULT 30
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS questions (
+                    id SERIAL PRIMARY KEY, 
+                    test_id INTEGER, 
+                    q_no INTEGER, 
+                    category TEXT, 
+                    question TEXT, 
+                    target TEXT,
+                    a1 TEXT, a2 TEXT, a3 TEXT, a4 TEXT, a5 TEXT, 
+                    a6 TEXT, a7 TEXT, a8 TEXT, a9 TEXT, a10 TEXT, 
+                    answer TEXT, 
+                    explanation TEXT
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS results (
+                    id SERIAL PRIMARY KEY, 
+                    test_id INTEGER, 
+                    user_id TEXT, 
+                    score INTEGER, 
+                    details TEXT, 
+                    comment TEXT, 
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.commit()
+            print("【初期化】すべてのテーブルの確認・作成が完了しました")
+    except Exception as e:
+        print(f"【エラー】初期化中にエラーが発生しました: {e}")
+        raise
+    finally:
+        if conn:
+            conn.close()
 
 # ========== コメント生成関数 ==========
 def generate_ai_comment(score, details_data):
@@ -116,7 +153,6 @@ def generate_ai_comment(score, details_data):
         comment += "【アドバイス】\n基礎問題を繰り返し解くことから始めましょう。"
     
     return comment
-
 
 def generate_ai_comment_with_gemini(score, details_data, student_name, test_name):
     """Geminiコメント生成（利用可能な場合のみ）"""
@@ -169,54 +205,34 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
         print(f"【Geminiエラー】: {e}")
         return generate_ai_comment(score, details_data)
 
+# ========== リクエスト前処理 ==========
+@app.before_request
+def before_request():
+    # 静的ファイルはスキップ
+    if request.path.startswith('/static'):
+        return
+    
+    # 認証不要なパス
+    public_paths = ['/', '/login', '/logout', '/register', '/password_reset']
+    if request.path in public_paths:
+        return
+    
+    # セッションがない場合はログイン画面へ
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    # セッションの有効性チェック
+    if session.get('current_test_id') and session.permanent:
+        session.modified = True
 
-# ========== 以下、通常のルーティング（変更なし） ==========
-# ※ ここから先は前回のコードと同じです
-# （省略しますが、前回のapp.pyの内容を続けて貼り付けてください）
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        u_id = request.form.get('id', '').strip()
-        pwd = request.form.get('password')
-        hashed_pwd = hash_password(pwd)
-        
-        try:
-            conn = get_db()
-            cur = conn.cursor(cursor_factory=RealDictCursor)
-            cur.execute('SELECT * FROM users WHERE id = %s', (u_id,))
-            user = cur.fetchone()
-            cur.close()
-            conn.close()
-            
-            if user and user['password'] == hashed_pwd:
-                session.clear()
-                session.update({
-                    'user_id': user['id'], 
-                    'user_name': user['name'], 
-                    'role': user['role'],
-                    'class_id': user.get('class_id') 
-                })
-                return redirect(url_for('index'))
-            else:
-                flash("IDまたはパスワードが間違っています")
-        except Exception as e:
-            print(f"ログインエラー: {e}")
-            flash("システムエラーが発生しました")
-            
-    return render_template('login.html')
-
-
+# ========== ルーティング ==========
 @app.route('/')
 def index():
-    # 常にセッションをクリアしてログイン画面へ
     session.clear()
     return redirect(url_for('login'))
 
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    # GETリクエストの場合はセッションをクリア
     if request.method == 'GET':
         session.clear()
     
@@ -241,7 +257,6 @@ def login():
                     'role': user['role'],
                     'class_id': user.get('class_id') 
                 })
-                # ロールに応じてリダイレクト
                 if user['role'] == 'teacher':
                     return redirect(url_for('teacher_admin'))
                 else:
@@ -254,6 +269,10 @@ def login():
             
     return render_template('login.html')
 
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -285,6 +304,9 @@ def register():
             flash("システムエラーが発生しました。")
     return render_template('register.html')
 
+@app.route('/password_reset', methods=['GET', 'POST'])
+def password_reset():
+    return render_template('password_reset.html')
 
 @app.route('/teacher/admin', methods=['GET', 'POST'])
 def teacher_admin():
@@ -440,7 +462,6 @@ def teacher_admin():
         
     return render_template('admin.html', tests=tests, results=results, classes=classes)
 
-
 @app.route('/teacher/delete_test/<int:test_id>', methods=['POST'])
 def delete_test(test_id):
     if session.get('role') != 'teacher': 
@@ -455,7 +476,6 @@ def delete_test(test_id):
     conn.close()
     flash('テストと関連するすべての結果を削除しました。')
     return redirect(url_for('teacher_admin'))
-
 
 @app.route('/student_dashboard')
 def student_dashboard():
@@ -477,7 +497,6 @@ def student_dashboard():
     cur.close()
     conn.close()
     return render_template('student_dashboard.html', tests=tests, my_results=my_results)
-
 
 @app.route('/student/test/<int:test_id>/start', methods=['GET', 'POST'])
 def take_test(test_id):
@@ -514,7 +533,6 @@ def take_test(test_id):
         print(f"Error in take_test: {e}")
         flash("システムエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
-
 
 @app.route('/student/test/<int:test_id>/submit', methods=['GET', 'POST'])
 def submit_test(test_id):
@@ -584,7 +602,6 @@ def submit_test(test_id):
         flash("採点処理中にエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
 
-
 @app.route('/student/test/<int:test_id>/result/<int:result_id>')
 def show_result(test_id, result_id):
     if session.get('role') != 'student':
@@ -637,7 +654,6 @@ def show_result(test_id, result_id):
         flash("結果の表示中にエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
 
-
 @app.route('/student/test/<int:test_id>/cheated', methods=['POST'])
 def cheated_test(test_id):
     conn = get_db()
@@ -649,7 +665,6 @@ def cheated_test(test_id):
     conn.close()
     return jsonify({'status': 'ok', 'redirect_url': url_for('student_dashboard')})
 
-
 @app.route('/api/student/test/<int:test_id>/get_question/<int:q_no>', methods=['GET', 'POST'])
 def api_get_question(test_id, q_no):
     if session.get('role') != 'student': 
@@ -658,6 +673,7 @@ def api_get_question(test_id, q_no):
         session['answers'] = {}
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
+    
     if request.method == 'POST':
         data = request.get_json() or {}
         ans_dict = session['answers']
@@ -694,7 +710,6 @@ def api_get_question(test_id, q_no):
         'status_list': status_list
     })
 
-
 @app.route('/student/test/<int:test_id>/abandon', methods=['POST'])
 def abandon_test(test_id):
     try:
@@ -706,33 +721,13 @@ def abandon_test(test_id):
         print(f"【エラー】abandon_test: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-
 @app.route('/student/test/<int:test_id>/check_session', methods=['GET'])
 def check_test_session(test_id):
     if session.get('current_test_id') != test_id:
         return jsonify({'valid': False, 'redirect': url_for('login')})
     return jsonify({'valid': True})
 
-
-@app.route('/password_reset', methods=['GET', 'POST'])
-def password_reset():
-    return render_template('password_reset.html')
-
-
-@app.route('/logout')
-def logout():
-    # セッションを完全にクリア
-    session.clear()
-    return redirect(url_for('login'))
-
-
-@app.before_request
-def check_session_expiry():
-    if session.get('user_id') and session.get('current_test_id'):
-        if session.permanent:
-            session.modified = True
-
-
+# ========== サーバー起動 ==========
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=False)
