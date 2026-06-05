@@ -1,0 +1,294 @@
+{% extends "layout.html" %}
+{% block title %}試験中 / Exam - {{ test.name }}{% endblock %}
+{% block content %}
+<div class="container-fluid" style="margin-top: 1%; height: 94vh; display: flex; flex-direction: column;">
+    <div class="row mb-2 shadow-sm bg-white py-2 px-2 rounded border flex-shrink-0">
+        <div class="col-md-7 d-flex align-items-center">
+            <h4 class="fw-bold mb-0 text-dark">
+                <i class="bi bi-pencil-square text-danger"></i> {{ test.name }}
+            </h4>
+        </div>
+        <div class="col-md-5 d-flex justify-content-end align-items-center">
+            <div class="bg-dark text-warning px-3 py-1 rounded fw-bold me-3 border border-warning" style="font-size: 1.2rem; min-width: 140px; text-align: center;">
+                <i class="bi bi-clock-fill"></i> 残り <span id="timer">--:--</span>
+            </div>
+            <button onclick="forceSubmit()" class="btn btn-danger fw-bold shadow-sm">
+                <i class="bi bi-box-arrow-up"></i> 試験を終了して提出
+            </button>
+        </div>
+    </div>
+
+    <div class="row flex-grow-1 overflow-hidden" style="min-height: 0;">
+        <div class="col-md-12 h-100 d-flex flex-column mb-2">
+            <div class="card shadow-sm border-0 bg-white rounded-3 p-3 flex-grow-1 d-flex flex-column overflow-auto">
+                <div class="d-flex justify-content-between align-items-center border-bottom pb-2 mb-2 flex-shrink-0">
+                    <span class="badge bg-primary text-white p-2 fw-bold" id="q-no-badge" style="font-size: 0.9rem;">問 -- / 全 {{ total_q }} 問</span>
+                    <span class="badge bg-secondary text-white p-2 fw-bold" id="category-badge">カテゴリ: --</span>
+                </div>
+
+                <div class="text-center my-2 flex-shrink-0" id="target-area" style="display:none;">
+                    <div class="display-4 fw-bold text-primary tracking-wider bg-primary-subtle py-2 px-4 rounded border border-primary-subtle" id="target-box" style="letter-spacing: 2px;">
+                        </div>
+                </div>
+
+                <div class="fs-4 text-dark mb-3 p-3 bg-light rounded border shadow-sm flex-shrink-0" id="question-text" style="line-height: 1.6; font-weight: 500;">
+                    </div>
+
+                <div class="flex-grow-1 overflow-auto px-1">
+                    <div class="row row-cols-1 row-cols-md-2 g-2" id="choices-container">
+                        </div>
+                </div>
+
+                <div class="d-flex justify-content-between border-top pt-3 mt-2 flex-shrink-0">
+                    <button type="button" onclick="submitAnswer(true)" class="btn btn-outline-warning fw-bold px-4">
+                        <i class="bi bi-arrow-right-short"></i> あとで解く / Skip
+                    </button>
+                    <button type="button" onclick="submitAnswer(false)" id="next-btn" class="btn btn-success fw-bold px-5 shadow-sm fs-5">
+                        次の問題へ / Next <i class="bi bi-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row flex-shrink-0 mt-auto">
+        <div class="col-md-12">
+            <div class="card shadow-sm border-0 bg-white rounded-3">
+                <div class="card-header bg-dark text-white py-1 d-flex justify-content-between align-items-center" style="font-size: 0.85rem;">
+                    <span class="fw-bold"><i class="bi bi-grid-3x3-gap-fill"></i> 問題ナビゲーション</span>
+                    <div class="small">
+                        <span class="badge bg-primary me-1">&nbsp;</span> 現在
+                        <span class="badge bg-success me-1">&nbsp;</span> 解答済
+                        <span class="badge bg-light border text-dark me-1">&nbsp;</span> 未解答
+                    </div>
+                </div>
+                <div class="card-body p-2" style="max-height: 85px; overflow-y: auto; background-color: #fbfbfb;">
+                    <div class="d-flex flex-wrap gap-1" id="nav-buttons-container">
+                        </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="fullscreen-blocker" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; color: white;">
+    <h2 class="fw-bold text-warning mb-3"><i class="bi bi-fullscreen"></i> 不正防止モードが有効です</h2>
+    <p class="fs-5 mb-4">試験を開始するには、下のボタンを押して「全画面モード」に切り替えてください。</p>
+    <button class="btn btn-primary btn-lg fw-bold px-5 py-3 shadow" onclick="startExamFullscreen()"><i class="bi bi-play-fill"></i> 全画面にして試験を開始・続行する</button>
+</div>
+
+<style>
+    .choice-label:hover {
+        background-color: #f1f3f5 !important;
+        border-color: #0d6efd !important;
+        transform: translateY(-1px);
+    }
+    .choice-label.selected-choice {
+        background-color: #e7f1ff !important;
+        border-color: #0d6efd !important;
+        box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25) !important;
+    }
+    .style-radio {
+        transform: scale(1.2);
+        cursor: pointer;
+    }
+</style>
+
+<script>
+    let currentQNo = 1;
+    const totalQuestions = parseInt("{{ total_q }}");
+    const testId = "{{ test.id }}";
+    let isCheated = false;
+
+    // 1. タイマー制御
+    let durationMinutes = parseInt("{{ test.duration }}");
+    let endTime = localStorage.getItem("exam_end_time_id_" + testId);
+    if (!endTime) {
+        endTime = new Date().getTime() + durationMinutes * 60 * 1000;
+        localStorage.setItem("exam_end_time_id_" + testId, endTime);
+    }
+
+    function updateTimer() {
+        let now = new Date().getTime();
+        let distance = endTime - now;
+        if (distance <= 0) {
+            clearInterval(timerInterval);
+            localStorage.removeItem("exam_end_time_id_" + testId);
+            alert("制限時間になりました。テストを自動提出します。");
+            window.location.href = "{{ url_for('submit_test', test_id=test.id) }}";
+            return;
+        }
+        let minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+        let seconds = Math.floor((distance % (1000 * 60)) / 1000);
+        document.getElementById("timer").innerHTML = (minutes < 10 ? "0" : "") + minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+    }
+    let timerInterval = setInterval(updateTimer, 1000);
+    updateTimer();
+
+    // 2. 🔴【重要】非同期で問題を読み込む関数 (ページ遷移しないため、フル画面が解けない)
+    function loadQuestion(qNo) {
+        currentQNo = qNo;
+        fetch(`/api/student/test/${testId}/get_question/${qNo}`)
+            .then(res => res.json())
+            .then(data => {
+                if(data.error) return;
+
+                // バッジと問題文の書き換え
+                document.getElementById("q-no-badge").innerText = `問 ${data.q_no} / 全 ${totalQuestions} 問`;
+                document.getElementById("category-badge").innerText = `カテゴリ: ${data.category}`;
+                document.getElementById("question-text").innerText = data.question;
+
+                // 🔴【指定】Target文字列を最上部にセット（空なら非表示）
+                const targetArea = document.getElementById("target-area");
+                const targetBox = document.getElementById("target-box");
+                if (data.target && data.target.trim() !== "") {
+                    targetBox.innerText = data.target;
+                    targetArea.style.display = "block";
+                } else {
+                    targetArea.style.display = "none";
+                }
+
+                // 次へボタンのテキスト制御
+                const nextBtn = document.getElementById("next-btn");
+                if (qNo === totalQuestions) {
+                    nextBtn.innerHTML = `最終解答を記録して提出画面へ <i class="bi bi-box-arrow-up"></i>`;
+                } else {
+                    nextBtn.innerHTML = `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
+                }
+
+                // 選択肢の動的生成
+                const container = document.getElementById("choices-container");
+                container.innerHTML = "";
+                Object.keys(data.choices).forEach(key => {
+                    const num = key.replace('a', '');
+                    const choiceText = data.choices[key];
+                    const isChecked = data.current_answer === num;
+
+                    const col = document.createElement("div");
+                    col.className = "col";
+                    col.innerHTML = `
+                        <label class="btn btn-outline-secondary w-100 text-start p-2 rounded-3 shadow-sm choice-label d-flex align-items-center ${isChecked ? 'selected-choice' : ''}" id="label-choice-${num}">
+                            <input type="radio" name="choice" value="${num}" class="form-check-input me-3 style-radio" ${isChecked ? 'checked' : ''} onclick="highlightChoice('${num}')">
+                            <span class="fw-bold text-dark" style="font-size: 1.05rem;">[${num}] ${choiceText}</span>
+                        </label>
+                    `;
+                    container.appendChild(col);
+                });
+
+                // 下部ナビゲーションボタンの全更新
+                renderNavigation(data.status_list);
+            });
+    }
+
+    // 選択肢を選んだ時のハイライト制御
+    function highlightChoice(num) {
+        document.querySelectorAll('.choice-label').forEach(el => el.classList.remove('selected-choice'));
+        const activeLabel = document.getElementById(`label-choice-${num}`);
+        if(activeLabel) activeLabel.classList.add('selected-choice');
+    }
+
+    // 3. 解答を非同期で保存し、次の問題へ
+    function submitAnswer(isSkip) {
+        let selectedChoice = "";
+        if (!isSkip) {
+            const checkedRadio = document.querySelector('input[name="choice"]:checked');
+            if (!checkedRadio && currentQNo <= totalQuestions) {
+                alert("選択肢を選ぶか、わからない場合は「あとで解く/Skip」を押してください。");
+                return;
+            }
+            if (checkedRadio) selectedChoice = checkedRadio.value;
+        }
+
+        fetch(`/api/student/test/${testId}/get_question/${currentQNo}`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ choice: selectedChoice, skip: isSkip })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (currentQNo >= totalQuestions) {
+                // 最後の問題ならリザルト画面に本遷移
+                localStorage.removeItem("exam_end_time_id_" + testId);
+                window.location.href = `/student/test/${testId}/submit`;
+            } else {
+                loadQuestion(currentQNo + 1);
+            }
+        });
+    }
+
+    // 4. 最下部のナビゲーションバーのレンダリング
+    function renderNavigation(statusList) {
+        const container = document.getElementById("nav-buttons-container");
+        container.innerHTML = "";
+        statusList.forEach(s => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = `btn btn-sm py-1 fw-bold border shadow-sm style-nav-btn`;
+            btn.style.width = "55px";
+            btn.style.fontSize = "0.8rem";
+            btn.innerText = `Q${s.q_no}`;
+
+            if (s.q_no === currentQNo) {
+                btn.classList.add("btn-primary", "text-white", "border-primary", "border-2");
+            } else if (s.is_answered) {
+                btn.classList.add("btn-success", "text-white", "border-success");
+            } else {
+                btn.classList.add("btn-light", "text-dark", "border-secondary-subtle");
+            }
+
+            btn.onclick = () => loadQuestion(s.q_no);
+            container.appendChild(btn);
+        });
+    }
+
+    function forceSubmit() {
+        if (confirm('本当に試験を終了して提出しますか？')) {
+            localStorage.removeItem("exam_end_time_id_" + testId);
+            window.location.href = `/student/test/${testId}/submit`;
+        }
+    }
+
+    // 5. 不正防止の全画面（フルスクリーン）強制ロジック
+    function startExamFullscreen() {
+        let docElm = document.documentElement;
+        if (docElm.requestFullscreen) {
+            docElm.requestFullscreen().then(() => {
+                document.getElementById("fullscreen-blocker").style.display = "none";
+            }).catch(err => {
+                alert("全画面モードへの切り替えに失敗しました。");
+            });
+        }
+    }
+
+    function checkFullscreenStatus() {
+        if (!document.fullscreenElement && !isCheated) {
+            document.getElementById("fullscreen-blocker").style.display = "flex";
+        } else {
+            document.getElementById("fullscreen-blocker").style.display = "none";
+        }
+    }
+
+    document.addEventListener("fullscreenchange", function() {
+        if (!document.fullscreenElement) {
+            // 正常終了以外での離脱を検知した場合のみ失格
+            const now = new Date().getTime();
+            if (localStorage.getItem("exam_end_time_id_" + testId)) {
+                isCheated = true;
+                localStorage.removeItem("exam_end_time_id_" + testId);
+                fetch(`/student/test/${testId}/cheated`, { method: "POST" })
+                .then(res => res.json())
+                .then(data => {
+                    alert("【不正行為を検知】全画面表示が解除されました。ルール違反により、この試験は強制終了（0点失格）となります。");
+                    window.location.href = data.redirect_url;
+                });
+            }
+        }
+    });
+
+    window.addEventListener("load", () => {
+        checkFullscreenStatus();
+        loadQuestion(1); // 初回Q1をAjaxで非同期読み込み
+    });
+    window.addEventListener("resize", checkFullscreenStatus);
+</script>
+{% endblock %}
