@@ -1,5 +1,4 @@
-#2026-6-5 version2.4.0
-
+#2026-6-5 version2.4.2
 
 # -*- coding: utf-8 -*-
 import os
@@ -428,7 +427,7 @@ def password_reset():
 
 @app.route('/logout')
 def logout():
-    session.pop('user_id', None)  # セッションからユーザー情報を削除
+    session.pop('user_id', None)  
     session.pop('role', None)
     return redirect(url_for('login')) 
 
