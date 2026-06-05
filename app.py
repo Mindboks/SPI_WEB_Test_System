@@ -52,7 +52,7 @@ def init_db():
                 )
             """)
             
-            # テストテーブル
+            # テストテーブル（idはSERIALで自動採番）
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS tests (
                     id SERIAL PRIMARY KEY, 
@@ -62,7 +62,7 @@ def init_db():
                 )
             """)
             
-            # 質問テーブル
+            # 質問テーブル（idはSERIALで自動採番）
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS questions (
                     id SERIAL PRIMARY KEY, 
@@ -90,8 +90,17 @@ def init_db():
                     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            
             conn.commit()
             print("【初期化】すべてのテーブルの確認・作成が完了しました")
+            
+            # シーケンスをリセット（既存データがある場合）
+            cur.execute("SELECT COUNT(*) FROM questions")
+            count = cur.fetchone()[0]
+            if count > 0:
+                cur.execute("SELECT setval('questions_id_seq', (SELECT MAX(id) FROM questions))")
+                conn.commit()
+                print(f"【初期化】questions_id_seq をリセットしました（現在の最大ID: {count}）")
             
     except Exception as e:
         print(f"【エラー】初期化中にエラーが発生しました: {e}")
@@ -194,83 +203,125 @@ def teacher_admin():
         file = request.files.get('test_csv')
 
         if t_name and t_class and file:
+            conn = None
             try:
                 conn = get_db()
                 cur = conn.cursor()
                 
-                # 1. testsテーブルのIDを手動採番して登録
-                cur.execute('SELECT COALESCE(MAX(id), 0) + 1 FROM tests')
+                # 1. testsテーブルに登録
+                cur.execute('''
+                    INSERT INTO tests (name, target_class, duration) 
+                    VALUES (%s, %s, %s) RETURNING id
+                ''', (t_name, t_class, t_duration))
                 new_test_id = cur.fetchone()[0]
-                cur.execute('INSERT INTO tests (id, name, target_class, duration) VALUES (%s, %s, %s, %s)', 
-                            (new_test_id, t_name, t_class, t_duration))
                 
-                # 2. questionsテーブル用のIDカウンターを現在の最大値から取得
-                cur.execute('SELECT COALESCE(MAX(id), 0) FROM questions')
-                q_id_counter = cur.fetchone()[0]
-                
+                # 2. CSVファイルの読み込み
                 import io
                 import csv
-                stream = io.StringIO(file.stream.read().decode("cp932"))
+                
+                # ファイルの内容を読み込み
+                file_content = file.read()
+                
+                # エンコーディングを自動判定
+                try:
+                    decoded_content = file_content.decode('utf-8-sig')
+                except UnicodeDecodeError:
+                    try:
+                        decoded_content = file_content.decode('cp932')
+                    except UnicodeDecodeError:
+                        decoded_content = file_content.decode('latin-1')
+                
+                stream = io.StringIO(decoded_content)
                 reader = csv.DictReader(stream)
                 
+                # 3. 各行をquestionsテーブルに登録
+                inserted_count = 0
                 for row in reader:
-                    # 1. 不要なカラムの削除
-                    row.pop('id', None)
+                    # 'end' 行をスキップ
+                    if row.get('test_number', '').strip() == 'end':
+                        continue
                     
-                    # 2. 選択肢を自動抽出 (Answer_1 ～ Answer_10 を辞書にまとめる)
-                    options_dict = {
-                        f"a{i}": row.get(f'Answer_{i}') 
-                        for i in range(1, 11) 
-                        if row.get(f'Answer_{i}')
-                    }
+                    # test_numberが空の場合はスキップ
+                    if not row.get('test_number') or str(row.get('test_number')).strip() == '':
+                        continue
                     
-                    # 3. INSERT実行
+                    # 値を取得する関数
+                    def get_value(key, default=''):
+                        val = row.get(key, default)
+                        return val if val and str(val).strip() else default
+                    
+                    # 選択肢の取得（Answer_1 〜 Answer_10）
+                    a1 = get_value('Answer_1')
+                    a2 = get_value('Answer_2')
+                    a3 = get_value('Answer_3')
+                    a4 = get_value('Answer_4')
+                    a5 = get_value('Answer_5')
+                    a6 = get_value('Answer_6')
+                    a7 = get_value('Answer_7')
+                    a8 = get_value('Answer_8')
+                    a9 = get_value('Answer_9')
+                    a10 = get_value('Answer_10')
+                    
+                    # answerが数値の場合はそのまま、それ以外は空文字
+                    answer_val = get_value('Answer')
+                    if answer_val and answer_val.isdigit():
+                        answer_val = str(answer_val)
+                    else:
+                        answer_val = ''
+                    
+                    # INSERT実行
                     cur.execute('''
                         INSERT INTO questions (
                             test_id, q_no, category, question, target, 
-                            options, answer, explanation
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, 
+                            answer, explanation
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ''', (
-                        new_test_id, 
-                        row.get('test_number'), 
-                        row.get('test genre'), 
-                        row.get('test questions'), 
-                        row.get('target', ''),
-                        json.dumps(options_dict), # JSONとして保存
-                        row.get('Answer'), 
-                        row.get('Test explanation', '')
+                        new_test_id,
+                        int(get_value('test_number', 0)),
+                        get_value('test genre'),
+                        get_value('test questions'),
+                        get_value('target'),
+                        a1, a2, a3, a4, a5, a6, a7, a8, a9, a10,
+                        answer_val,
+                        get_value('Test explanation')
                     ))
-                    
-                    cur.execute('''
-                        INSERT INTO questions (test_id, q_no, category, question, target, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, answer, explanation)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ''', vals)
+                    inserted_count += 1
                 
                 conn.commit()
                 cur.close()
                 conn.close()
-                flash(f'「{t_name}」を正常に登録しました。')
+                flash(f'「{t_name}」を正常に登録しました。（{inserted_count}問）')
+                
             except Exception as e:
+                if conn:
+                    conn.rollback()
+                    conn.close()
                 flash(f'CSV登録エラー: {str(e)}')
+                import traceback
+                traceback.print_exc()
         
         return redirect(url_for('teacher_admin'))
 
-    # GET処理（表示用データ取得）は同じ
+    # GET処理（表示用データ取得）
     tests, results, classes = [], [], []
     try:
         conn = get_db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("SELECT DISTINCT class_id FROM users WHERE class_id IS NOT NULL AND class_id != 'teacher' ORDER BY class_id ASC")
         classes = [row['class_id'] for row in cur.fetchall()]
-        cur.execute('SELECT * FROM tests')
+        cur.execute('SELECT * FROM tests ORDER BY id DESC')
         tests = cur.fetchall()
         cur.execute('''SELECT r.id, t.name AS test_name, u.class_id, u.id AS student_id, u.name AS student_name, r.score, r.timestamp 
-                       FROM results r JOIN tests t ON r.test_id = t.id JOIN users u ON r.user_id = u.id ORDER BY r.timestamp DESC''')
+                       FROM results r 
+                       JOIN tests t ON r.test_id = t.id 
+                       JOIN users u ON r.user_id = u.id 
+                       ORDER BY r.timestamp DESC''')
         results = cur.fetchall()
         cur.close()
         conn.close()
-    except:
-        pass
+    except Exception as e:
+        print(f"データ取得エラー: {e}")
         
     return render_template('admin.html', tests=tests, results=results, classes=classes)
 
@@ -483,6 +534,30 @@ def show_result(test_id, result_id):
         print(f"Error: {e}")
         flash("結果の表示中にエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
+def reset_question_sequence():
+    """questionsテーブルのIDシーケンスをリセットする"""
+    conn = None
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        # 現在の最大IDを取得
+        cur.execute("SELECT COALESCE(MAX(id), 0) FROM questions")
+        max_id = cur.fetchone()[0]
+        
+        # シーケンスをリセット
+        cur.execute(f"ALTER SEQUENCE questions_id_seq RESTART WITH {max_id + 1}")
+        conn.commit()
+        
+        cur.close()
+        conn.close()
+        print(f"【シーケンスリセット】questions_id_seq を {max_id + 1} に設定しました")
+        return True
+    except Exception as e:
+        print(f"【エラー】シーケンスリセット失敗: {e}")
+        if conn:
+            conn.close()
+        return False
 
 @app.route('/api/student/test/<int:test_id>/get_question/<int:q_no>', methods=['GET', 'POST'])
 def api_get_question(test_id, q_no):
