@@ -1,4 +1,4 @@
-#2026-6-5 version2.4.8
+#2026-6-5 version2.4.9db
 
 # -*- coding: utf-8 -*-
 import os
@@ -208,18 +208,22 @@ def teacher_admin():
                 conn = get_db()
                 cur = conn.cursor()
                 
-                # 1. testsテーブルに登録
-                cur.execute('''
-                    INSERT INTO tests (name, target_class, duration) 
-                    VALUES (%s, %s, %s) RETURNING id
-                ''', (t_name, t_class, t_duration))
-                new_test_id = cur.fetchone()[0]
+                # 現在の最大IDを取得して手動で採番
+                cur.execute("SELECT COALESCE(MAX(id), 0) FROM tests")
+                max_id = cur.fetchone()[0]
+                new_test_id = max_id + 1
                 
-                # 2. CSVファイルの読み込み
+                # IDを明示的に指定してINSERT
+                cur.execute('''
+                    INSERT INTO tests (id, name, target_class, duration) 
+                    VALUES (%s, %s, %s, %s)
+                ''', (new_test_id, t_name, t_class, t_duration))
+                
+                # CSVファイルの読み込み
                 import io
                 import csv
+                import re
                 
-                # ファイルの内容を読み込み
                 file_content = file.read()
                 
                 # エンコーディングを自動判定
@@ -234,40 +238,90 @@ def teacher_admin():
                 stream = io.StringIO(decoded_content)
                 reader = csv.DictReader(stream)
                 
-                # 3. 各行をquestionsテーブルに登録
-                inserted_count = 0
-                for row in reader:
-                    # 'end' 行をスキップ
-                    if row.get('test_number', '').strip() == 'end':
-                        continue
-                    
-                    # test_numberが空の場合はスキップ
-                    if not row.get('test_number') or str(row.get('test_number')).strip() == '':
-                        continue
-                    
-                    # 値を取得する関数
-                    def get_value(key, default=''):
-                        val = row.get(key, default)
-                        return val if val and str(val).strip() else default
-                    
-                    # 選択肢の取得（Answer_1 〜 Answer_10）
-                    a1 = get_value('Answer_1')
-                    a2 = get_value('Answer_2')
-                    a3 = get_value('Answer_3')
-                    a4 = get_value('Answer_4')
-                    a5 = get_value('Answer_5')
-                    a6 = get_value('Answer_6')
-                    a7 = get_value('Answer_7')
-                    a8 = get_value('Answer_8')
-                    a9 = get_value('Answer_9')
-                    a10 = get_value('Answer_10')
-                    
-                    # answerが数値の場合はそのまま、それ以外は空文字
-                    answer_val = get_value('Answer')
-                    if answer_val and answer_val.isdigit():
-                        answer_val = str(answer_val)
+                # カラム名を動的に検出する関数
+                def find_column(reader, patterns):
+                    """パターンに一致するカラム名を検索"""
+                    for pattern in patterns:
+                        for col in reader.fieldnames:
+                            if pattern.lower() in col.lower() or col == pattern:
+                                return col
+                    return None
+                
+                # 必要なカラムを動的に検出
+                q_no_col = find_column(reader, ['测试编号', 'test_number', '番号', 'no', '問題番号', '序号'])
+                category_col = find_column(reader, ['A-Z category', 'category', 'カテゴリ', 'ジャンル', 'test genre'])
+                question_col = find_column(reader, ['A-Z question', 'question', '問題文', 'test questions'])
+                target_col = find_column(reader, ['A-Z target', 'target', 'ターゲット'])
+                answer_col = find_column(reader, ['A-Z answer', 'answer', '正解', 'Answer'])
+                explanation_col = find_column(reader, ['Test explanation', 'explanation', '解説'])
+                
+                # 選択肢のカラムを動的に検出（a1〜a10 または A-Z a1〜A-Z a10）
+                choice_columns = []
+                for i in range(1, 11):  # 1〜10まで
+                    # 複数のパターンに対応
+                    patterns = [
+                        f'a{i}', f'A-Z a{i}', f'Answer_{i}', f'選択肢{i}',
+                        f'option{i}', f'Option{i}', f'OPTION{i}'
+                    ]
+                    for pattern in patterns:
+                        found = find_column(reader, [pattern])
+                        if found:
+                            choice_columns.append(found)
+                            break
                     else:
-                        answer_val = ''
+                        choice_columns.append(None)  # 見つからない場合はNone
+                
+                inserted_count = 0
+                skipped_count = 0
+                
+                for row in reader:
+                    # 問題番号を取得
+                    q_no_raw = ''
+                    if q_no_col:
+                        q_no_raw = row.get(q_no_col, '').strip()
+                    
+                    # 空行や無効な行をスキップ
+                    if not q_no_raw or q_no_raw == 'end' or q_no_raw == '序号':
+                        skipped_count += 1
+                        continue
+                    
+                    # 数値に変換できない場合はスキップ
+                    try:
+                        q_no_int = int(float(q_no_raw))
+                    except (ValueError, TypeError):
+                        skipped_count += 1
+                        continue
+                    
+                    # 選択肢を取得（値があるものだけ）
+                    a1 = row.get(choice_columns[0], '').strip() if choice_columns[0] else ''
+                    a2 = row.get(choice_columns[1], '').strip() if choice_columns[1] else ''
+                    a3 = row.get(choice_columns[2], '').strip() if choice_columns[2] else ''
+                    a4 = row.get(choice_columns[3], '').strip() if choice_columns[3] else ''
+                    a5 = row.get(choice_columns[4], '').strip() if choice_columns[4] else ''
+                    a6 = row.get(choice_columns[5], '').strip() if choice_columns[5] else ''
+                    a7 = row.get(choice_columns[6], '').strip() if choice_columns[6] else ''
+                    a8 = row.get(choice_columns[7], '').strip() if choice_columns[7] else ''
+                    a9 = row.get(choice_columns[8], '').strip() if choice_columns[8] else ''
+                    a10 = row.get(choice_columns[9], '').strip() if choice_columns[9] else ''
+                    
+                    # 正解の取得
+                    answer_val = ''
+                    if answer_col:
+                        answer_val = row.get(answer_col, '').strip()
+                    
+                    # 解説の取得
+                    explanation = ''
+                    if explanation_col:
+                        explanation = row.get(explanation_col, '').strip()
+                    
+                    # カテゴリ・問題文・ターゲットの取得
+                    category = row.get(category_col, '').strip() if category_col else ''
+                    question = row.get(question_col, '').strip() if question_col else ''
+                    target = row.get(target_col, '').strip() if target_col else ''
+                    
+                    # NULLを空文字に変換
+                    def null_to_empty(val):
+                        return val if val is not None else ''
                     
                     # INSERT実行
                     cur.execute('''
@@ -277,21 +331,22 @@ def teacher_admin():
                             answer, explanation
                         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ''', (
-                        new_test_id,
-                        int(get_value('test_number', 0)),
-                        get_value('test genre'),
-                        get_value('test questions'),
-                        get_value('target'),
-                        a1, a2, a3, a4, a5, a6, a7, a8, a9, a10,
-                        answer_val,
-                        get_value('Test explanation')
+                        new_test_id, q_no_int, 
+                        null_to_empty(category), 
+                        null_to_empty(question), 
+                        null_to_empty(target),
+                        null_to_empty(a1), null_to_empty(a2), null_to_empty(a3), null_to_empty(a4), null_to_empty(a5),
+                        null_to_empty(a6), null_to_empty(a7), null_to_empty(a8), null_to_empty(a9), null_to_empty(a10),
+                        null_to_empty(answer_val), 
+                        null_to_empty(explanation)
                     ))
                     inserted_count += 1
                 
                 conn.commit()
                 cur.close()
                 conn.close()
-                flash(f'「{t_name}」を正常に登録しました。（{inserted_count}問）')
+                
+                flash(f'「{t_name}」を正常に登録しました。（{inserted_count}問登録 / {skipped_count}行スキップ）')
                 
             except Exception as e:
                 if conn:
@@ -303,7 +358,7 @@ def teacher_admin():
         
         return redirect(url_for('teacher_admin'))
 
-    # GET処理（表示用データ取得）
+    # GET処理
     tests, results, classes = [], [], []
     try:
         conn = get_db()
@@ -374,6 +429,7 @@ def student_dashboard():
     cur.close()
     conn.close()
     return render_template('student_dashboard.html', tests=tests, my_results=my_results)
+    print("CSVのカラム名一覧:", list(reader.fieldnames))
 
 # --- 試験開始処理 ---
 @app.route('/student/test/<int:test_id>/start', methods=['GET', 'POST'])
