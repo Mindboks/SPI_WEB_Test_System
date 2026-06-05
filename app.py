@@ -1,4 +1,4 @@
-#2026-6-5 version2.4.2
+#2026-6-5 version2.4.4
 
 # -*- coding: utf-8 -*-
 import os
@@ -191,13 +191,8 @@ def teacher_admin():
                     INSERT INTO questions (test_id, q_no, category, question, target, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, answer, explanation)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ''', (
-                    # q_id_counter を削除しました
                     new_test_id, 
-                    row['test_number'], row['test genre'], row['test questions'], row.get('target', ''),
-                    row.get('Answer_1',''), row.get('Answer_2',''), row.get('Answer_3',''), 
-                    row.get('Answer_4',''), row.get('Answer_5',''), row.get('Answer_6',''), 
-                    row.get('Answer_7',''), row.get('Answer_8',''), row.get('Answer_9',''), 
-                    row.get('Answer_10',''), row['Answer'], row.get('Test explanation', '')
+                    row['test_number'],  ...
                 ))
                 
                 conn.commit()
@@ -247,13 +242,14 @@ def delete_test(test_id):
 
 @app.route('/student/test/<int:test_id>/cheated', methods=['POST'])
 def cheated_test(test_id):
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute('INSERT INTO results (test_id, user_id, score, comment) VALUES (%s, %s, %s, %s)',
-                         (test_id, session.get('user_id'), 0, "失格"))
-        conn.commit()
-    return jsonify({'status': 'ok'}) 
-
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('INSERT INTO results (test_id, user_id, score, comment) VALUES (%s, %s, %s, %s)',
+                (test_id, session.get('user_id'), 0, "失格"))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({'status': 'ok', 'redirect_url': url_for('student_dashboard')})
 # 生徒用ダッシュボード（リダイレクト先）
 @app.route('/student_dashboard')
 def student_dashboard():
@@ -278,54 +274,61 @@ def student_dashboard():
     conn.close()
     return render_template('student_dashboard.html', tests=tests, my_results=my_results)
 
+# --- 試験開始処理 ---
 @app.route('/student/test/<int:test_id>/start', methods=['GET', 'POST'])
 def take_test(test_id):
-    # 1. 権限チェック：生徒以外はアクセス禁止
     if session.get('role') != 'student':
         flash("受験には生徒アカウントでのログインが必要です。")
         return redirect(url_for('login'))
-    # 2. セッションの初期化
-    # 以前の回答データをクリアして、新しい受験セッションを開始します
+    
     session['answers'] = {}
     session['current_test_id'] = test_id
-    # 3. 必要に応じてテストの存在チェックを行う（任意ですが推奨）
+    
     conn = None
     try:
         conn = get_db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
+        # テスト情報の取得
         cur.execute('SELECT * FROM tests WHERE id = %s', (test_id,))
         test = cur.fetchone()
+        
+        # 総問題数の取得
+        cur.execute('SELECT COUNT(*) as total FROM questions WHERE test_id = %s', (test_id,))
+        total_data = cur.fetchone()
+        total_q = total_data['total'] if total_data else 0
+        
         cur.close()
         conn.close()
+        
         if not test:
             flash("選択したテストは見つかりませんでした。")
-            return redirect(url_for('student_dashboard'))           
+            return redirect(url_for('student_dashboard'))
+        
+        # 修正：test と total_q をテンプレートに渡す
+        return render_template('test_page.html', test_id=test_id, test=test, total_q=total_q)
+        
     except Exception as e:
         if conn: conn.close()
+        print(f"Error in take_test: {e}")
         flash("システムエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
-    # 4. 受験画面テンプレートを表示
-    # test_page.html に test_id を渡して、問題読み込みを開始させます
-    return render_template('test_page.html', test_id=test_id)
-
+    
 # 試験終了（提出）処理ルート
 def calculate_analysis(test_id, user_answers):
-    # DBからそのテストの全問題（正解とジャンル）を取得
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute("SELECT id, genre, correct_answer FROM questions WHERE test_id = %s", (test_id,))
+    # genre → category, correct_answer → answer に修正
+    cur.execute("SELECT id, category, answer FROM questions WHERE test_id = %s", (test_id,))
     questions = cur.fetchall() 
     genre_stats = {}
     for q in questions:
-        genre = q['genre']
-        if genre not in genre_stats:
-            genre_stats[genre] = {'correct': 0, 'total': 0}        
-        genre_stats[genre]['total'] += 1
-        # ユーザーの回答が正解と一致するかチェック
-        if str(user_answers.get(str(q['id']))) == str(q['correct_answer']):
-            genre_stats[genre]['correct'] += 1
+        category = q['category']
+        if category not in genre_stats:
+            genre_stats[category] = {'correct': 0, 'total': 0}       
+        genre_stats[category]['total'] += 1
+        if str(user_answers.get(str(q['id']))) == str(q['answer']):
+            genre_stats[category]['correct'] += 1
     
-    # グラフ用データに変換
     labels = list(genre_stats.keys())
     scores = [int((genre_stats[g]['correct'] / genre_stats[g]['total']) * 100) for g in labels]
     cur.close()
@@ -361,23 +364,39 @@ def submit_test(test_id):
 @app.route('/student/test/<int:test_id>/result/<int:result_id>')
 def show_result(test_id, result_id):
     if session.get('role') != 'student':
-        return redirect(url_for('index'))
-    conn = get_db()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute('SELECT * FROM results WHERE id = %s AND user_id = %s', (result_id, session.get('user_id')))
-    res = cur.fetchone()
+        return redirect(url_for('login'))
     
-    if not res:
-        flash("結果が見つかりません。")
-        return redirect(url_for('student_dashboard'))
-
+    conn = None
     try:
-        details_data = json.loads(res['details'])
-    except:
-        details_data = {'labels': [], 'scores': []}
-    cur.close()
-    conn.close()
-    return render_template('result.html', res=res, details=details_data)
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # JOINを使用してデータを取得
+        cur.execute('''
+            SELECT r.*, u.name as student_name 
+            FROM results r 
+            JOIN users u ON r.user_id = u.id 
+            WHERE r.id = %s AND r.user_id = %s
+        ''', (result_id, session.get('user_id')))
+        
+        res = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if not res:
+            flash("結果が見つかりません。")
+            return redirect(url_for('student_dashboard'))
+
+        # detailsの解析
+        details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
+        return render_template('result_page.html', res=res, details=details_data)
+
+    except Exception as e:
+        # 万が一エラーが起きても、アプリが白紙にならずログを残してダッシュボードに戻す
+        if conn: conn.close()
+        print(f"Error: {e}")
+        flash("結果の表示中にエラーが発生しました。")
+        return redirect(url_for('student_dashboard'))
 
 @app.route('/api/student/test/<int:test_id>/get_question/<int:q_no>', methods=['GET', 'POST'])
 def api_get_question(test_id, q_no):
