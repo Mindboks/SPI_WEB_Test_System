@@ -1,4 +1,4 @@
-#2026-6-6 version2.5.1
+#2026-6-6 version2.5.4
 
 # -*- coding: utf-8 -*-
 import os
@@ -491,7 +491,7 @@ def calculate_analysis(test_id, user_answers):
     conn.close()
     return {"labels": labels, "scores": scores}
 
-@app.route('/student/test/<int:test_id>/submit', methods=['GET'])
+@app.route('/student/test/<int:test_id>/submit', methods=['GET', 'POST'])
 def submit_test(test_id):
     if session.get('role') != 'student':
         return redirect(url_for('login'))
@@ -499,61 +499,83 @@ def submit_test(test_id):
     # セッションからユーザーの回答を取得
     user_answers = session.get('answers', {})
     
-    conn = get_db()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    
-    # 全問題を取得（q_no でソート）
-    cur.execute("SELECT id, q_no, category, answer FROM questions WHERE test_id = %s ORDER BY q_no", (test_id,))
-    questions = cur.fetchall()
-    
-    total_q = len(questions)
-    correct_count = 0
-    genre_stats = {}
-    
-    # 全ての問題を集計（未回答は不正解として扱う）
-    for q in questions:
-        q_no = str(q['q_no'])
-        category = q['category'] or '未分類'
+    conn = None
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        if category not in genre_stats:
-            genre_stats[category] = {'correct': 0, 'total': 0}
-        genre_stats[category]['total'] += 1
+        # 全問題を取得（q_no でソート）
+        cur.execute("SELECT id, q_no, category, answer FROM questions WHERE test_id = %s ORDER BY q_no", (test_id,))
+        questions = cur.fetchall()
         
-        # 回答を取得（未回答の場合は空文字）
-        user_answer = user_answers.get(q_no, '')
-        correct_answer = str(q['answer']) if q['answer'] else ''
+        total_q = len(questions)
+        correct_count = 0
+        genre_stats = {}
         
-        # 回答があり、かつ正解の場合のみカウント
-        if user_answer and user_answer == correct_answer:
-            correct_count += 1
-            genre_stats[category]['correct'] += 1
-    
-    # 分析データを作成
-    analysis = {
-        "labels": list(genre_stats.keys()),
-        "scores": [int((genre_stats[g]['correct'] / genre_stats[g]['total']) * 100) if genre_stats[g]['total'] > 0 else 0 for g in genre_stats]
-    }
-    
-    # 総スコア計算（100点満点）
-    final_score = int((correct_count / total_q) * 100) if total_q > 0 else 0
-    
-    # 結果を保存
-    cur.execute('''
-        INSERT INTO results (user_id, test_id, score, details, timestamp) 
-        VALUES (%s, %s, %s, %s, NOW()) RETURNING id
-    ''', (session.get('user_id'), test_id, final_score, json.dumps(analysis)))
-    
-    result_id = cur.fetchone()['id']
-    conn.commit()
-    
-    cur.close()
-    conn.close()
-    
-    # セッションの回答データとタイマーをクリア
-    session.pop('answers', None)
-    session.pop('current_test_id', None)
-    
-    return redirect(url_for('show_result', test_id=test_id, result_id=result_id))
+        print(f"【デバッグ】提出処理開始: test_id={test_id}, 総問題数={total_q}")
+        print(f"【デバッグ】ユーザー回答: {user_answers}")
+        
+        # 全ての問題を集計（未回答は不正解として扱う）
+        for q in questions:
+            q_no = str(q['q_no'])
+            category = q['category'] or '未分類'
+            
+            if category not in genre_stats:
+                genre_stats[category] = {'correct': 0, 'total': 0}
+            genre_stats[category]['total'] += 1
+            
+            # 回答を取得（未回答の場合は空文字）
+            user_answer = user_answers.get(q_no, '')
+            correct_answer = str(q['answer']) if q['answer'] else ''
+            
+            print(f"【デバッグ】問題{q_no}: ユーザー回答='{user_answer}', 正解='{correct_answer}'")
+            
+            # 回答があり、かつ正解の場合のみカウント
+            if user_answer and user_answer == correct_answer:
+                correct_count += 1
+                genre_stats[category]['correct'] += 1
+        
+        # 分析データを作成
+        analysis = {
+            "labels": list(genre_stats.keys()),
+            "scores": [int((genre_stats[g]['correct'] / genre_stats[g]['total']) * 100) if genre_stats[g]['total'] > 0 else 0 for g in genre_stats]
+        }
+        
+        # 総スコア計算（100点満点）
+        final_score = int((correct_count / total_q) * 100) if total_q > 0 else 0
+        
+        print(f"【デバッグ】正解数: {correct_count}/{total_q}, スコア: {final_score}")
+        print(f"【デバッグ】分析結果: {analysis}")
+        
+        # 結果を保存
+        cur.execute('''
+            INSERT INTO results (user_id, test_id, score, details, timestamp) 
+            VALUES (%s, %s, %s, %s, NOW()) RETURNING id
+        ''', (session.get('user_id'), test_id, final_score, json.dumps(analysis)))
+        
+        result_id = cur.fetchone()['id']
+        conn.commit()
+        
+        cur.close()
+        conn.close()
+        
+        # セッションの回答データとタイマーをクリア
+        session.pop('answers', None)
+        session.pop('current_test_id', None)
+        
+        flash(f'試験を提出しました。得点: {final_score}点 / {total_q}問中{correct_count}問正解')
+        
+        return redirect(url_for('show_result', test_id=test_id, result_id=result_id))
+        
+    except Exception as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        print(f"【エラー】submit_test: {e}")
+        import traceback
+        traceback.print_exc()
+        flash("採点処理中にエラーが発生しました。")
+        return redirect(url_for('student_dashboard'))
 
 # --- 結果表示用 ---
 @app.route('/student/test/<int:test_id>/result/<int:result_id>')
@@ -592,6 +614,7 @@ def show_result(test_id, result_id):
         print(f"Error: {e}")
         flash("結果の表示中にエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
+    
 def reset_question_sequence():
     """questionsテーブルのIDシーケンスをリセットする"""
     conn = None
@@ -616,6 +639,32 @@ def reset_question_sequence():
         if conn:
             conn.close()
         return False
+    
+#デバッグ用の確認ルート（問題の状態を確認）
+@app.route('/debug/test/<int:test_id>/check', methods=['GET'])
+def debug_test_check(test_id):
+    if session.get('role') != 'teacher':
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    # テスト情報
+    cur.execute('SELECT * FROM tests WHERE id = %s', (test_id,))
+    test = cur.fetchone()
+    
+    # 問題一覧
+    cur.execute('SELECT id, q_no, category, answer FROM questions WHERE test_id = %s ORDER BY q_no', (test_id,))
+    questions = cur.fetchall()
+    
+    cur.close()
+    conn.close()
+    
+    return jsonify({
+        'test': test,
+        'total_questions': len(questions),
+        'questions': questions
+    })
 
 @app.route('/api/student/test/<int:test_id>/get_question/<int:q_no>', methods=['GET', 'POST'])
 def api_get_question(test_id, q_no):

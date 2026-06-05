@@ -343,6 +343,74 @@ function saveCurrentAnswerAndSubmit() {
         }
     }
 
+    // 強制提出関数（制限時間切れ用）
+function forceSubmit() {
+    if (isSubmitting) return;
+    isSubmitting = true;
+    
+    // 現在の回答を保存（あれば）
+    const checkedRadio = document.querySelector('input[name="choice"]:checked');
+    if (checkedRadio && currentQNo <= totalQuestions) {
+        const selectedChoice = checkedRadio.value;
+        fetch(`/api/student/test/${testId}/get_question/${currentQNo}`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ choice: selectedChoice, skip: false })
+        })
+        .then(() => {
+            finalSubmit();
+        })
+        .catch(() => {
+            finalSubmit();
+        });
+    } else {
+        finalSubmit();
+    }
+}
+
+    // 最終提出処理
+    function finalSubmit() {
+        localStorage.removeItem("exam_end_time_id_" + testId);
+        // GETリクエストで提出（バックエンドがGETに対応済み）
+        window.location.href = `/student/test/${testId}/submit`;
+    }
+
+    // 次へボタンの動作（最後の問題の場合）
+    function submitAnswer(isSkip) {
+        let selectedChoice = "";
+        if (!isSkip) {
+            const checkedRadio = document.querySelector('input[name="choice"]:checked');
+            if (!checkedRadio && currentQNo <= totalQuestions) {
+                alert("選択肢を選ぶか、わからない場合は「あとで解く/Skip」を押してください。");
+                return;
+            }
+            if (checkedRadio) selectedChoice = checkedRadio.value;
+        }
+
+        fetch(`/api/student/test/${testId}/get_question/${currentQNo}`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ choice: selectedChoice, skip: isSkip })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (currentQNo >= totalQuestions) {
+                // 最後の問題なら提出
+                finalSubmit();
+            } else {
+                loadQuestion(currentQNo + 1);
+            }
+        })
+        .catch(error => {
+            console.error("Error:", error);
+            if (currentQNo >= totalQuestions) {
+                finalSubmit();
+            } else {
+                loadQuestion(currentQNo + 1);
+            }
+        });
+    }
+
     function checkFullscreenStatus() {
         if (!document.fullscreenElement && !isCheated) {
             document.getElementById("fullscreen-blocker").style.display = "flex";
