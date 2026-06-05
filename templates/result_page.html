@@ -317,7 +317,7 @@
      style="display:none;"></div>
     <footer class="footer-bar">
         <div>
-            <a href="/student/dashboard" class="back-btn"><i class="fa-solid fa-arrow-left"></i> ダッシュボードに戻る</a>
+            <a href="{{ url_for('student_dashboard') }}" class="back-btn"><i class="fa-solid fa-arrow-left"></i> ダッシュボードに戻る</a>
         </div>
         <div class="text-end pt-2">
             受験ID: #{{ res.id }} &nbsp;|&nbsp; 実施日時: {{ res.timestamp }} &nbsp;|&nbsp; 浦和専門学校 CBT System

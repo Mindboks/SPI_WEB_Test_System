@@ -44,9 +44,7 @@
                                     <i class="bi bi-clock-history"></i> 制限時間: <span class="fw-bold text-primary">{{ t.duration }}分</span>
                                 </p>
                             </div>
-                            <a href="{{ url_for('take_test', test_id=t.id, q_no=1) }}" class="btn btn-success fw-bold px-4 shadow-sm py-2">
-                                <i class="bi bi-play-fill"></i> 受験開始
-                            </a>
+                            <a href="{{ url_for('take_test', test_id=t.id) }}" class="btn btn-primary">受験開始</a>
                         </div>
                         {% endfor %}
                     {% else %}

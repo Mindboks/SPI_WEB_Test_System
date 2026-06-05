@@ -1,4 +1,4 @@
-#2026-6-5 version2.4.5
+#2026-6-5 version2.4.6
 
 # -*- coding: utf-8 -*-
 import os
@@ -186,21 +186,27 @@ def teacher_admin():
                 reader = csv.DictReader(stream)
                 
                 for row in reader:
-                    row.pop('id', None) 
-                    # 各値を明示的に取得（キーが存在しない場合は空文字 '' を代入）
-                    vals = (
-                        new_test_id,
-                        row.get('test_number', 0),
-                        row.get('test genre', ''),
-                        row.get('test questions', ''),
+                    # ★重要：CSV内のid情報を強制的に削除する
+                    if 'id' in row:
+                        del row['id']
+                    
+                    # データを整理して登録
+                    cur.execute('''
+                        INSERT INTO questions (test_id, q_no, category, question, target, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, answer, explanation)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ''', (
+                        new_test_id, 
+                        row.get('test_number'), 
+                        row.get('test genre'), 
+                        row.get('test questions'), 
                         row.get('target', ''),
-                        row.get('Answer_1', ''), row.get('Answer_2', ''), row.get('Answer_3', ''),
-                        row.get('Answer_4', ''), row.get('Answer_5', ''), row.get('Answer_6', ''),
-                        row.get('Answer_7', ''), row.get('Answer_8', ''), row.get('Answer_9', ''),
-                        row.get('Answer_10', ''),
-                        row.get('Answer', ''),
+                        row.get('Answer_1', ''), row.get('Answer_2', ''), row.get('Answer_3', ''), 
+                        row.get('Answer_4', ''), row.get('Answer_5', ''), row.get('Answer_6', ''), 
+                        row.get('Answer_7', ''), row.get('Answer_8', ''), row.get('Answer_9', ''), 
+                        row.get('Answer_10', ''), 
+                        row.get('Answer'), 
                         row.get('Test explanation', '')
-                    )
+                    ))
                     
                     cur.execute('''
                         INSERT INTO questions (test_id, q_no, category, question, target, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, answer, explanation)
