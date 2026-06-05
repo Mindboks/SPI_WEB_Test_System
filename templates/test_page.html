@@ -100,30 +100,112 @@
     const testId = "{{ test.id }}";
     let isCheated = false;
 
-    // 1. タイマー制御
-    let durationMinutes = parseInt("{{ test.duration }}");
-    let endTime = localStorage.getItem("exam_end_time_id_" + testId);
-    if (!endTime) {
-        endTime = new Date().getTime() + durationMinutes * 60 * 1000;
-        localStorage.setItem("exam_end_time_id_" + testId, endTime);
-    }
 
-    function updateTimer() {
-        let now = new Date().getTime();
-        let distance = endTime - now;
-        if (distance <= 0) {
-            clearInterval(timerInterval);
-            localStorage.removeItem("exam_end_time_id_" + testId);
-            alert("制限時間になりました。テストを自動提出します。");
-            window.location.href = "{{ url_for('submit_test', test_id=test.id) }}";
-            return;
-        }
-        let minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-        let seconds = Math.floor((distance % (1000 * 60)) / 1000);
-        document.getElementById("timer").innerHTML = (minutes < 10 ? "0" : "") + minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+// ページを離れようとした時の警告
+window.addEventListener("beforeunload", function(e) {
+    if (localStorage.getItem("exam_end_time_id_" + testId)) {
+        e.preventDefault();
+        e.returnValue = "試験中です。ページを離れると不正行為とみなされる可能性があります。";
+        return e.returnValue;
     }
+});
+
+// タイマー制御 - 制限時間切れで強制提出
+let durationMinutes = parseInt("{{ test.duration }}");
+let endTime = localStorage.getItem("exam_end_time_id_" + testId);
+if (!endTime) {
+    endTime = new Date().getTime() + durationMinutes * 60 * 1000;
+    localStorage.setItem("exam_end_time_id_" + testId, endTime);
+}
+
+let isSubmitting = false;  // 二重提出防止フラグ
+
+function updateTimer() {
+    let now = new Date().getTime();
+    let distance = endTime - now;
+    
+    if (distance <= 0) {
+        clearInterval(timerInterval);
+        localStorage.removeItem("exam_end_time_id_" + testId);
+        
+        if (!isSubmitting) {
+            isSubmitting = true;
+            alert("制限時間になりました。答案を自動提出します。");
+            forceSubmit();  // 強制提出を実行
+        }
+        return;
+    }
+    
+    let minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+    let seconds = Math.floor((distance % (1000 * 60)) / 1000);
+    document.getElementById("timer").innerHTML = (minutes < 10 ? "0" : "") + minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+}
+
     let timerInterval = setInterval(updateTimer, 1000);
     updateTimer();
+
+// 強制提出関数（未回答の問題も全て保存）
+function forceSubmit() {
+    if (isSubmitting) return;
+    isSubmitting = true;
+    
+    if (confirm('本当に試験を終了して提出しますか？') || !confirm) {
+        // 現在の問題の回答があれば保存
+        const checkedRadio = document.querySelector('input[name="choice"]:checked');
+        if (checkedRadio && currentQNo <= totalQuestions) {
+            // 現在の回答を保存してから提出
+            saveCurrentAnswerAndSubmit();
+        } else {
+            // そのまま提出
+            localStorage.removeItem("exam_end_time_id_" + testId);
+            window.location.href = `/student/test/${testId}/submit`;
+        }
+    } else {
+        isSubmitting = false;
+    }
+}
+
+function loadQuestion(qNo) {
+    // 制限時間切れチェック
+    let now = new Date().getTime();
+    if (endTime && now >= endTime) {
+        alert("制限時間が過ぎました。自動提出します。");
+        forceSubmit();
+        return;
+    }
+    
+    currentQNo = qNo;
+    fetch(`/api/student/test/${testId}/get_question/${qNo}`)
+        .then(res => res.json())
+        .then(data => {
+            if(data.error) {
+                // エラー時も提出画面へ
+                window.location.href = `/student/test/${testId}/submit`;
+                return;
+            }
+            // ... 以下通常処理
+        });
+}
+
+// 現在の回答を保存してから提出
+function saveCurrentAnswerAndSubmit() {
+    const checkedRadio = document.querySelector('input[name="choice"]:checked');
+    const selectedChoice = checkedRadio ? checkedRadio.value : "";
+    
+    fetch(`/api/student/test/${testId}/get_question/${currentQNo}`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ choice: selectedChoice, skip: false })
+    })
+    .then(() => {
+        localStorage.removeItem("exam_end_time_id_" + testId);
+        window.location.href = `/student/test/${testId}/submit`;
+    })
+    .catch(() => {
+        localStorage.removeItem("exam_end_time_id_" + testId);
+        window.location.href = `/student/test/${testId}/submit`;
+    });
+}
 
     // 2. 🔴【重要】非同期で問題を読み込む関数 (ページ遷移しないため、フル画面が解けない)
     function loadQuestion(qNo) {
