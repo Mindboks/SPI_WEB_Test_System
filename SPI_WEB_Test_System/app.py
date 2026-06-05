@@ -188,19 +188,17 @@ def teacher_admin():
                 for row in reader:
                     # idを明示的に指定せず、DB側に自動で番号を振らせます
                     cur.execute('''
-                        INSERT INTO questions (test_id, q_no, category, question, target, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, answer, explanation)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ''', (
-                        new_test_id, 
-                        row['test_number'], 
-                        row['test genre'], 
-                        row['test questions'], 
-                        row.get('target', ''),
-                        row.get('Answer_1',''), row.get('Answer_2',''), row.get('Answer_3',''), 
-                        row.get('Answer_4',''), row.get('Answer_5',''), row.get('Answer_6',''), 
-                        row.get('Answer_7',''), row.get('Answer_8',''), row.get('Answer_9',''), 
-                        row.get('Answer_10',''), row['Answer'], row.get('Test explanation', '')
-                    ))
+                    INSERT INTO questions (test_id, q_no, category, question, target, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, answer, explanation)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ''', (
+                    # q_id_counter を削除しました
+                    new_test_id, 
+                    row['test_number'], row['test genre'], row['test questions'], row.get('target', ''),
+                    row.get('Answer_1',''), row.get('Answer_2',''), row.get('Answer_3',''), 
+                    row.get('Answer_4',''), row.get('Answer_5',''), row.get('Answer_6',''), 
+                    row.get('Answer_7',''), row.get('Answer_8',''), row.get('Answer_9',''), 
+                    row.get('Answer_10',''), row['Answer'], row.get('Test explanation', '')
+                ))
                 
                 conn.commit()
                 cur.close()
