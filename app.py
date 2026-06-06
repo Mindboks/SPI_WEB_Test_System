@@ -1,4 +1,4 @@
-#2026-6-6 version2.6.7
+#2026-4-11~2026-6-7 version2.6.8
 
 # -*- coding: utf-8 -*-
 import os
@@ -346,27 +346,34 @@ def teacher_admin():
                 reader = csv.DictReader(stream)
                 
                 def find_column(reader, patterns):
+                    # 完全一致を優先
                     for pattern in patterns:
                         for col in reader.fieldnames:
                             if col is None:
                                 continue
-                            if pattern.lower() == col.lower() or pattern.lower() in col.lower():
+                            if pattern.lower() == col.lower():
+                                return col
+                    # 部分一致は後回し
+                    for pattern in patterns:
+                        for col in reader.fieldnames:
+                            if col is None:
+                                continue
+                            if pattern.lower() in col.lower():
                                 return col
                     return None
-                
-                q_no_col = find_column(reader, ['测试编号', 'test_number', '番号', 'no', '問題番号', '序号'])
-                category_col = find_column(reader, ['A-Z category', 'category', 'カテゴリ', 'ジャンル', 'test genre'])
-                question_col = find_column(reader, ['A-Z question', 'question', '問題文', 'test questions'])
-                target_col = find_column(reader, ['A-Z target', 'target', 'ターゲット'])
-                answer_col = find_column(reader, ['A-Z answer', 'answer', '正解', 'Answer'])
-                explanation_col = find_column(reader, ['Test explanation', 'explanation', '解説'])
-                
+
+                q_no_col = find_column(reader, ['test_number'])
+                category_col = find_column(reader, ['test genre'])
+                question_col = find_column(reader, ['test questions'])
+                target_col = find_column(reader, ['target'])
+                answer_col = find_column(reader, ['Answer'])  # 完全一致のみ
+                explanation_col = find_column(reader, ['Test explanation'])
+
                 choice_columns = []
                 for i in range(1, 11):
-                    patterns = [f'answer_{i}', f'Answer_{i}', f'a{i}', f'選択肢{i}', f'option{i}']
-                    found = find_column(reader, patterns)
+                    found = find_column(reader, [f'Answer_{i}'])
                     choice_columns.append(found)
-                
+                                
                 inserted_count = 0
                 skipped_count = 0
                 
