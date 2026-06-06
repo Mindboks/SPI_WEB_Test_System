@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.6.8
+#2026-4-11~2026-6-7 version2.6.9
 
 # -*- coding: utf-8 -*-
 import os
@@ -426,7 +426,7 @@ def teacher_admin():
                             test_id, q_no, category, question, target, 
                             a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, 
                             answer, explanation
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ''', values)
                     inserted_count += 1
                 
