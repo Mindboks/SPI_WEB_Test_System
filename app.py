@@ -1,4 +1,4 @@
-#2026-6-6 version2.6.4dbChengeLog
+#2026-6-6 version2.6.6
 
 # -*- coding: utf-8 -*-
 import os
@@ -348,7 +348,9 @@ def teacher_admin():
                 def find_column(reader, patterns):
                     for pattern in patterns:
                         for col in reader.fieldnames:
-                            if pattern.lower() in col.lower() or col == pattern:
+                            if col is None:
+                                continue
+                            if pattern.lower() == col.lower() or pattern.lower() in col.lower():
                                 return col
                     return None
                 
@@ -361,7 +363,7 @@ def teacher_admin():
                 
                 choice_columns = []
                 for i in range(1, 11):
-                    patterns = [f'a{i}', f'A-Z a{i}', f'Answer_{i}', f'選択肢{i}', f'option{i}']
+                    patterns = [f'answer_{i}', f'Answer_{i}', f'a{i}', f'選択肢{i}', f'option{i}']
                     found = find_column(reader, patterns)
                     choice_columns.append(found)
                 
@@ -416,7 +418,6 @@ def teacher_admin():
                         null_to_empty(a6), null_to_empty(a7), null_to_empty(a8), null_to_empty(a9), null_to_empty(a10),
                         null_to_empty(answer_val), null_to_empty(explanation)
                     ))
-                    # next_q_id += 1  ← この行は削除
                     inserted_count += 1
                 
                 conn.commit()
