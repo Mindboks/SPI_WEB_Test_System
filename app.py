@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.7.1
+#2026-4-11~2026-6-7 version2.7.2
 
 # -*- coding: utf-8 -*-
 import os
@@ -8,19 +8,20 @@ import json
 import hashlib
 import re
 import psycopg2
+
 from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 
 # ========== Gemini設定（オプション） ==========
 GEMINI_AVAILABLE = False
-gemini_model = genai.GenerativeModel('gemini-2.0-flash')
+gemini_model = None
 
 try:
     import google.generativeai as genai
     GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
     if GEMINI_API_KEY:
         genai.configure(api_key=GEMINI_API_KEY)
-        gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+        gemini_model = genai.GenerativeModel('gemini-2.0-flash')
         GEMINI_AVAILABLE = True
         print("【Gemini】有効化されました")
     else:
