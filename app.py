@@ -1,4 +1,4 @@
-#2026-6-6 version2.5.9
+#2026-6-6 version2.6.2
 
 # -*- coding: utf-8 -*-
 import os
@@ -39,10 +39,11 @@ DATABASE_URL = os.environ.get('DATABASE_URL')
 
 # アプリケーションの設定
 app.config.update(
-    SESSION_COOKIE_SECURE=False,
+    SESSION_COOKIE_SECURE=True,  # HTTPSなのでTrue
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
-    PERMANENT_SESSION_LIFETIME=1800,  # 30分
+    PERMANENT_SESSION_LIFETIME=1800,
+    SESSION_COOKIE_PERMANENT=False,  # ブラウザを閉じたらCookie削除
 )
 
 # ========== データベース接続関数 ==========
@@ -221,9 +222,8 @@ def before_request():
 # ========== ルーティング ==========
 @app.route('/')
 def index():
-    # session.clear() を削除し、ロール別に振り分けるだけにする
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
+    session.clear()  # 常にセッションクリア
+    return redirect(url_for('login'))
     if session.get('role') == 'teacher':
         return redirect(url_for('teacher_admin'))
     return redirect(url_for('student_dashboard'))
