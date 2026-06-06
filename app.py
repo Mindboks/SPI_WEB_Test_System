@@ -1,4 +1,4 @@
-#2026-6-6 version2.6.6
+#2026-6-6 version2.6.7
 
 # -*- coding: utf-8 -*-
 import os
@@ -405,19 +405,22 @@ def teacher_admin():
                     def null_to_empty(val):
                         return val if val is not None else ''
                     
+                    values = (
+                        new_test_id, q_no_int,
+                        null_to_empty(category), null_to_empty(question), null_to_empty(target),
+                        null_to_empty(a1), null_to_empty(a2), null_to_empty(a3), null_to_empty(a4), null_to_empty(a5),
+                        null_to_empty(a6), null_to_empty(a7), null_to_empty(a8), null_to_empty(a9), null_to_empty(a10),
+                        null_to_empty(answer_val), null_to_empty(explanation)
+                    )
+                    print(f"【デバッグ】値の数: {len(values)}, 値: {values}")
+
                     cur.execute('''
                         INSERT INTO questions (
                             test_id, q_no, category, question, target, 
                             a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, 
                             answer, explanation
                         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ''', (
-                        new_test_id, q_no_int,
-                        null_to_empty(category), null_to_empty(question), null_to_empty(target),
-                        null_to_empty(a1), null_to_empty(a2), null_to_empty(a3), null_to_empty(a4), null_to_empty(a5),
-                        null_to_empty(a6), null_to_empty(a7), null_to_empty(a8), null_to_empty(a9), null_to_empty(a10),
-                        null_to_empty(answer_val), null_to_empty(explanation)
-                    ))
+                    ''', values)
                     inserted_count += 1
                 
                 conn.commit()
