@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.7.2
+#2026-4-11~2026-6-7 version2.7.3
 
 # -*- coding: utf-8 -*-
 import os
@@ -552,12 +552,16 @@ def submit_test(test_id):
         conn = get_db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
+        # 問題を取得（q_no順）
         cur.execute("SELECT id, q_no, category, answer FROM questions WHERE test_id = %s ORDER BY q_no", (test_id,))
         questions = cur.fetchall()
         
         total_q = len(questions)
         correct_count = 0
         genre_stats = {}
+        
+        print(f"【デバッグ】ユーザー回答: {user_answers}")
+        print(f"【デバッグ】問題数: {total_q}")
         
         for q in questions:
             q_no = str(q['q_no'])
@@ -567,21 +571,42 @@ def submit_test(test_id):
                 genre_stats[category] = {'correct': 0, 'total': 0}
             genre_stats[category]['total'] += 1
             
+            # ユーザーの回答を取得（キーは問題番号）
             user_answer = user_answers.get(q_no, '')
             correct_answer = str(q['answer']) if q['answer'] else ''
-            print(f"【採点デバッグ】q_no={q_no}, user={user_answer}, correct={correct_answer}, match={user_answer==correct_answer}")
-
+            
+            print(f"【デバッグ】問題{q_no}: カテゴリ={category}, ユーザー回答={user_answer}, 正解={correct_answer}")
+            
+            # 回答が一致したら正解
             if user_answer and user_answer == correct_answer:
                 correct_count += 1
                 genre_stats[category]['correct'] += 1
+                print(f"【デバッグ】→ 正解！")
+            else:
+                print(f"【デバッグ】→ 不正解（回答なしまたは不一致）")
+        
+        # 分析データ作成
+        labels = list(genre_stats.keys())
+        scores = []
+        for g in labels:
+            if genre_stats[g]['total'] > 0:
+                score = int((genre_stats[g]['correct'] / genre_stats[g]['total']) * 100)
+            else:
+                score = 0
+            scores.append(score)
         
         analysis = {
-            "labels": list(genre_stats.keys()),
-            "scores": [int((genre_stats[g]['correct'] / genre_stats[g]['total']) * 100) if genre_stats[g]['total'] > 0 else 0 for g in genre_stats]
+            "labels": labels,
+            "scores": scores
         }
         
         final_score = int((correct_count / total_q) * 100) if total_q > 0 else 0
         
+        print(f"【デバッグ】正解数: {correct_count}/{total_q}")
+        print(f"【デバッグ】最終スコア: {final_score}")
+        print(f"【デバッグ】分析結果: {analysis}")
+        
+        # 結果を保存
         cur.execute('''
             INSERT INTO results (user_id, test_id, score, details, timestamp) 
             VALUES (%s, %s, %s, %s, NOW()) RETURNING id
@@ -687,10 +712,13 @@ def api_get_question(test_id, q_no):
         data = request.get_json() or {}
         ans_dict = session['answers']
         if data.get('skip'):
-            ans_dict[str(q_no)] = ""
+            ans_dict[str(q_no)] = ""  # キーは文字列のq_no
+            print(f"【APIデバッグ】スキップ: q_no={q_no}")
         else:
             ans_dict[str(q_no)] = str(data.get('choice', ''))
+            print(f"【APIデバッグ】回答保存: q_no={q_no}, choice={data.get('choice', '')}")
         session['answers'] = ans_dict
+        print(f"【APIデバッグ】現在の回答状況: {session['answers']}")
 
     cur.execute('SELECT * FROM questions WHERE test_id = %s AND q_no = %s', (test_id, q_no))
     q = cur.fetchone()
