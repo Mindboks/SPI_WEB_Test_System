@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.7.8
+#2026-4-11~2026-6-7 version2.7.9
 
 # -*- coding: utf-8 -*-
 import os
@@ -13,6 +13,7 @@ from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 
 
+# ========== Gemini設定 ==========
 GEMINI_AVAILABLE = False
 gemini_model = None
 
