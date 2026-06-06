@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.7.0
+#2026-4-11~2026-6-7 version2.7.1
 
 # -*- coding: utf-8 -*-
 import os
@@ -13,7 +13,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 
 # ========== Gemini設定（オプション） ==========
 GEMINI_AVAILABLE = False
-gemini_model = None
+gemini_model = genai.GenerativeModel('gemini-2.0-flash')
 
 try:
     import google.generativeai as genai
@@ -366,7 +366,8 @@ def teacher_admin():
                 category_col = find_column(reader, ['test genre'])
                 question_col = find_column(reader, ['test questions'])
                 target_col = find_column(reader, ['target'])
-                answer_col = find_column(reader, ['Answer'])  # 完全一致のみ
+                answer_col = find_column(reader, ['Answer'])
+                print(f"【デバッグ】answer_col={answer_col}")
                 explanation_col = find_column(reader, ['Test explanation'])
 
                 choice_columns = []
