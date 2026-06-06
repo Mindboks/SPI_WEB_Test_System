@@ -170,8 +170,22 @@
             flex-grow: 1;
             white-space: pre-wrap;
             padding-right: 5px;
-            text-align: left !important;   /* ← 追加 */
+            text-align: left;
+            /* 以下を追加 */
+            text-indent: 0;
+            margin: 0;
+            padding-left: 0;
         }
+
+        /* 内部の余分な空白を削除 */
+        .ai-comment-box *:first-child {
+            margin-top: 0;
+        }
+
+        .ai-comment-box br:first-child {
+            display: none;
+        }
+        
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
@@ -293,8 +307,8 @@
     </div>
     
     <div id="chart-data" 
-         data-labels="{{ details.labels | tojson }}" 
-         data-scores="{{ details.scores | tojson }}" 
+         data-labels='{{ details.labels | tojson }}' 
+         data-scores='{{ details.scores | tojson }}' 
          style="display:none;"></div>
     
     <footer class="footer-bar">
@@ -326,35 +340,45 @@
             return;
         }
         
-        // データを取得してパース
+        // サーバーから渡されたデータをそのまま使用
         let labels = [];
         let scores = [];
         
         try {
+            // 属性から直接データを取得
             const labelsAttr = dataElement.getAttribute('data-labels');
             const scoresAttr = dataElement.getAttribute('data-scores');
             
             console.log('【デバッグ】data-labels:', labelsAttr);
             console.log('【デバッグ】data-scores:', scoresAttr);
             
-            labels = JSON.parse(labelsAttr || '[]');
-            scores = JSON.parse(scoresAttr || '[]');
+            if (labelsAttr && labelsAttr !== 'null' && labelsAttr !== 'undefined' && labelsAttr !== '[]') {
+                labels = JSON.parse(labelsAttr);
+            }
+            if (scoresAttr && scoresAttr !== 'null' && scoresAttr !== 'undefined' && scoresAttr !== '[]') {
+                scores = JSON.parse(scoresAttr);
+            }
             
             console.log('【デバッグ】カテゴリー:', labels);
             console.log('【デバッグ】正解率:', scores);
-            console.log('【デバッグ】カテゴリー数:', labels.length);
             
         } catch(e) {
             console.error('データ解析エラー:', e);
-            labels = ['データがありません'];
-            scores = [0];
         }
         
-        // データがない場合のデフォルト表示
-        if (labels.length === 0) {
-            labels = ['データがありません'];
-            scores = [0];
+        // データがない場合のフォールバック（エラー表示のみ）
+        if (!labels || labels.length === 0) {
+            console.warn('カテゴリーデータがありません');
+            // 空のチャートを表示しない（エラーメッセージを表示）
+            canvas.parentElement.innerHTML = '<div class="text-center text-muted p-5">データがありません</div>';
+            return;
         }
+        
+        // スコアを数値に変換
+        scores = scores.map(s => {
+            const num = Number(s);
+            return isNaN(num) ? 0 : num;
+        });
         
         // チャートを描画
         new Chart(ctx, {
@@ -364,22 +388,22 @@
                 datasets: [{
                     label: '正解率 (%)',
                     data: scores,
-                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                    backgroundColor: 'rgba(16, 185, 129, 0.2)',
                     borderColor: '#10b981',
-                    borderWidth: 3,
-                    pointBackgroundColor: '#ffffff',
-                    pointBorderColor: '#10b981',
-                    pointRadius: 5,
-                    pointHoverRadius: 7,
+                    borderWidth: 2,
+                    pointBackgroundColor: '#10b981',
+                    pointBorderColor: '#ffffff',
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
                     fill: true
                 }]
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false,
+                maintainAspectRatio: true,
                 plugins: {
-                    legend: { 
-                        display: !(labels.length === 1 && labels[0] === 'データがありません')
+                    legend: {
+                        display: false
                     },
                     tooltip: {
                         callbacks: {
@@ -395,20 +419,20 @@
                         max: 100,
                         ticks: {
                             stepSize: 20,
+                            color: '#94a3b8',
                             backdropColor: 'transparent'
                         },
                         grid: {
-                            color: 'rgba(255,255,255,0.15)'
+                            color: 'rgba(255,255,255,0.1)'
                         },
                         angleLines: {
-                            color: 'rgba(255,255,255,0.15)'
+                            color: 'rgba(255,255,255,0.1)'
                         },
                         pointLabels: {
                             color: '#f8fafc',
                             font: {
-                                size: 12,
-                                weight: 'bold',
-                                family: 'Noto Sans JP'
+                                size: 11,
+                                weight: 'bold'
                             }
                         }
                     }
@@ -416,7 +440,7 @@
             }
         });
         
-        console.log('【デバッグ】レーダーチャート描画完了');
+        console.log('レーダーチャート描画完了', { labels, scores });
     })();
 </script>
 

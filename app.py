@@ -12,7 +12,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 
-# ========== Gemini設定（オプション） ==========
+
 GEMINI_AVAILABLE = False
 gemini_model = None
 
@@ -30,6 +30,7 @@ except ImportError:
     print("【Gemini】パッケージがインストールされていません - ダミーコメントを使用します")
 except Exception as e:
     print(f"【Gemini】初期化エラー: {e}")
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -202,7 +203,10 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
     
     try:
         response = gemini_model.generate_content(prompt)
-        return response.text
+        comment = response.text
+        # 先頭の空白や改行を削除
+        comment = comment.lstrip('\n\r ')
+        return comment
     except Exception as e:
         print(f"【Geminiエラー】: {e}")
         return generate_ai_comment(score, details_data)
