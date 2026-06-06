@@ -324,76 +324,99 @@
         });
     }
 
-    // ========== 5. 全画面モード（修正版） ==========
+    // ========== 5. 全画面モード（修正版2） ==========
+    let fullscreenExitAllowed = false;
+    let fullscreenCheckInterval = null;
+
     function startExamFullscreen() {
         let docElm = document.documentElement;
         if (docElm.requestFullscreen) {
             docElm.requestFullscreen().then(() => {
                 document.getElementById("fullscreen-blocker").style.display = "none";
-                // 全画面開始フラグをセット
                 sessionStorage.setItem("fullscreen_active", "true");
+                startFullscreenWatch();
             }).catch(err => {
-                alert("全画面モードへの切り替えに失敗しました。");
+                console.log("全画面モードへの切り替えに失敗しましたが、試験を続行します。");
+                document.getElementById("fullscreen-blocker").style.display = "none";
+                sessionStorage.setItem("fullscreen_active", "true");
+                startFullscreenWatch();
             });
+        } else {
+            document.getElementById("fullscreen-blocker").style.display = "none";
+            sessionStorage.setItem("fullscreen_active", "true");
         }
     }
 
-    // 全画面状態の監視（修正版）
-    let fullscreenExitAllowed = false;
+    function startFullscreenWatch() {
+        if (fullscreenCheckInterval) clearInterval(fullscreenCheckInterval);
+        fullscreenCheckInterval = setInterval(() => {
+            const examActive = localStorage.getItem("exam_end_time_id_" + testId);
+            if (!examActive) {
+                if (fullscreenCheckInterval) clearInterval(fullscreenCheckInterval);
+                return;
+            }
+            
+            if (!document.fullscreenElement && sessionStorage.getItem("fullscreen_active") === "true") {
+                if (!fullscreenExitAllowed) {
+                    const userConfirmed = confirm("警告：全画面モードが解除されました。試験を続行するには「OK」を押して再度全画面モードに切り替えてください。\n「キャンセル」を押すと不正行為として記録されます。");
+                    if (userConfirmed) {
+                        document.documentElement.requestFullscreen().catch(e => console.log(e));
+                    } else {
+                        clearInterval(fullscreenCheckInterval);
+                        localStorage.removeItem("exam_end_time_id_" + testId);
+                        fetch(`/student/test/${testId}/cheated`, { method: "POST" })
+                        .then(() => {
+                            alert("試験を終了します。");
+                            window.location.href = "/student_dashboard";
+                        });
+                    }
+                }
+            }
+        }, 3000);
+    }
 
     document.addEventListener("fullscreenchange", function() {
         if (!document.fullscreenElement) {
-            // 全画面が解除された
-            const examActive = localStorage.getItem("exam_end_time_id_" + testId);
-            const fullscreenWasActive = sessionStorage.getItem("fullscreen_active") === "true";
-            
-            // 試験中で、かつ自発的な全画面解除でない場合のみ不正とする
-            if (examActive && fullscreenWasActive && !fullscreenExitAllowed) {
-                isCheated = true;
-                localStorage.removeItem("exam_end_time_id_" + testId);
-                sessionStorage.removeItem("fullscreen_active");
-                
-                fetch(`/student/test/${testId}/cheated`, { method: "POST" })
-                .then(res => res.json())
-                .then(data => {
-                    alert("【不正行為を検知】全画面表示が解除されました。ルール違反により、この試験は強制終了（0点失格）となります。");
-                    window.location.href = data.redirect_url;
-                });
-            } else {
-                // 正常な解除（試験終了後など）
-                sessionStorage.removeItem("fullscreen_active");
-            }
-            fullscreenExitAllowed = false;
+            console.log("全画面解除されました");
         } else {
-            // 全画面になった
             sessionStorage.setItem("fullscreen_active", "true");
+            document.getElementById("fullscreen-blocker").style.display = "none";
         }
     });
 
+    function checkFullscreenStatus() {
+        const examActive = localStorage.getItem("exam_end_time_id_" + testId);
+        if (examActive && !sessionStorage.getItem("fullscreen_active")) {
+            document.getElementById("fullscreen-blocker").style.display = "flex";
+        } else {
+            document.getElementById("fullscreen-blocker").style.display = "none";
+        }
+    }
+
     // 正常な提出時は全画面解除を許可
     function finalSubmit() {
-        fullscreenExitAllowed = true;  // 全画面解除を許可
+        fullscreenExitAllowed = true;
+        if (fullscreenCheckInterval) clearInterval(fullscreenCheckInterval);
         localStorage.removeItem("exam_end_time_id_" + testId);
         sessionStorage.removeItem("fullscreen_active");
         window.location.href = `/student/test/${testId}/submit`;
     }
 
-    // 時間切れ時の提出
     function forceSubmitTimeUp() {
-        fullscreenExitAllowed = true;  // 全画面解除を許可
+        fullscreenExitAllowed = true;
+        if (fullscreenCheckInterval) clearInterval(fullscreenCheckInterval);
         alert("制限時間が終了しました。結果を表示します。");
         localStorage.removeItem("exam_end_time_id_" + testId);
         sessionStorage.removeItem("fullscreen_active");
         window.location.href = `/student/test/${testId}/submit`;
     }
 
-    // 手動提出
     function forceSubmit() {
         if (isSubmitting) return;
         isSubmitting = true;
         
         if (confirm('本当に試験を終了して提出しますか？')) {
-            fullscreenExitAllowed = true;  // 全画面解除を許可
+            fullscreenExitAllowed = true;
             const checkedRadio = document.querySelector('input[name="choice"]:checked');
             if (checkedRadio && currentQNo <= totalQuestions) {
                 const selectedChoice = checkedRadio.value;
@@ -415,20 +438,6 @@
             isSubmitting = false;
         }
     }
-
-    // 全画面ブロッカーの表示制御（修正版）
-    function checkFullscreenStatus() {
-        const examActive = localStorage.getItem("exam_end_time_id_" + testId);
-        const fullscreenActive = sessionStorage.getItem("fullscreen_active") === "true";
-        
-        // 試験中で、全画面が有効でない場合のみブロッカーを表示
-        if (examActive && !document.fullscreenElement && !fullscreenActive) {
-            document.getElementById("fullscreen-blocker").style.display = "flex";
-        } else {
-            document.getElementById("fullscreen-blocker").style.display = "none";
-        }
-    }
-
     // ========== 6. ページ離脱防止 ==========
     window.addEventListener("beforeunload", function(e) {
         if (localStorage.getItem("exam_end_time_id_" + testId)) {
