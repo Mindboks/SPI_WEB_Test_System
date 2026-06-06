@@ -208,28 +208,25 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
 # ========== リクエスト前処理 ==========
 @app.before_request
 def before_request():
-    # 静的ファイルはスキップ
     if request.path.startswith('/static'):
         return
     
-    # 認証不要なパス
-    public_paths = ['/', '/login', '/logout', '/register', '/password_reset']
-    if request.path in public_paths:
+    # '/' を除外、APIルートを追加
+    public_paths = ['/login', '/logout', '/register', '/password_reset']
+    if request.path in public_paths or request.path.startswith('/api/'):
         return
     
-    # セッションがない場合はログイン画面へ
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    
-    # セッションの有効性チェック
-    if session.get('current_test_id') and session.permanent:
-        session.modified = True
-
 # ========== ルーティング ==========
 @app.route('/')
 def index():
-    session.clear()
-    return redirect(url_for('login'))
+    # session.clear() を削除し、ロール別に振り分けるだけにする
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    if session.get('role') == 'teacher':
+        return redirect(url_for('teacher_admin'))
+    return redirect(url_for('student_dashboard'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -325,14 +322,11 @@ def teacher_admin():
                 conn = get_db()
                 cur = conn.cursor()
                 
-                cur.execute("SELECT COALESCE(MAX(id), 0) FROM tests")
-                max_test_id = cur.fetchone()[0]
-                new_test_id = max_test_id + 1
-                
                 cur.execute('''
-                    INSERT INTO tests (id, name, target_class, duration) 
-                    VALUES (%s, %s, %s, %s)
-                ''', (new_test_id, t_name, t_class, t_duration))
+                    INSERT INTO tests (name, target_class, duration) 
+                    VALUES (%s, %s, %s) RETURNING id
+                ''', (t_name, t_class, t_duration))
+                new_test_id = cur.fetchone()[0]
                 
                 cur.execute("SELECT COALESCE(MAX(id), 0) FROM questions")
                 max_q_id = cur.fetchone()[0]
@@ -411,19 +405,18 @@ def teacher_admin():
                     
                     cur.execute('''
                         INSERT INTO questions (
-                            id, test_id, q_no, category, question, target, 
+                            test_id, q_no, category, question, target, 
                             a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, 
                             answer, explanation
                         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ''', (
-                        next_q_id, new_test_id, q_no_int, 
+                        new_test_id, q_no_int,
                         null_to_empty(category), null_to_empty(question), null_to_empty(target),
                         null_to_empty(a1), null_to_empty(a2), null_to_empty(a3), null_to_empty(a4), null_to_empty(a5),
                         null_to_empty(a6), null_to_empty(a7), null_to_empty(a8), null_to_empty(a9), null_to_empty(a10),
                         null_to_empty(answer_val), null_to_empty(explanation)
                     ))
-                    
-                    next_q_id += 1
+                    # next_q_id += 1  ← この行は削除
                     inserted_count += 1
                 
                 conn.commit()
@@ -641,6 +634,7 @@ def show_result(test_id, result_id):
             test_name=test_name
         )
         
+        res = dict(res)  # RealDictRowを通常のdictに変換
         res['comment'] = ai_comment
         
         return render_template('result_page.html', res=res, details=details_data)
