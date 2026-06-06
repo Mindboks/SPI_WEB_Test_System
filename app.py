@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.6.9
+#2026-4-11~2026-6-7 version2.7.0
 
 # -*- coding: utf-8 -*-
 import os
@@ -567,7 +567,8 @@ def submit_test(test_id):
             
             user_answer = user_answers.get(q_no, '')
             correct_answer = str(q['answer']) if q['answer'] else ''
-            
+            print(f"【採点デバッグ】q_no={q_no}, user={user_answer}, correct={correct_answer}, match={user_answer==correct_answer}")
+
             if user_answer and user_answer == correct_answer:
                 correct_count += 1
                 genre_stats[category]['correct'] += 1
@@ -605,6 +606,7 @@ def submit_test(test_id):
         traceback.print_exc()
         flash("採点処理中にエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
+
 
 @app.route('/student/test/<int:test_id>/result/<int:result_id>')
 def show_result(test_id, result_id):
