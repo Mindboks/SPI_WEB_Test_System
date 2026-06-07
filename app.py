@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.8.4final-renovation.Version0.0.1
+#2026-4-11~2026-6-7 version2.8.5final-renovation.Version0.0.1
 
 # -*- coding: utf-8 -*-
 import os
@@ -20,12 +20,12 @@ gemini_model = None
 try:
     import google.generativeai as genai
     GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+    # Geminiの設定
     if GEMINI_API_KEY:
         genai.configure(api_key=GEMINI_API_KEY)
-        gemini_model = genai.GenerativeModel('gemini-2.0-flash')
+        gemini_model = genai.GenerativeModel('gemini-1.5-pro')  # ← ここを修正
         GEMINI_AVAILABLE = True
-        #print("【Gemini】有効化されました")
-    else:
+        print("【Gemini】有効化されました")
         print("【Gemini】APIキーが設定されていません - ダミーコメントを使用します")
 except ImportError:
     print("【Gemini】パッケージがインストールされていません - ダミーコメントを使用します")
