@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.8.6final-renovation.Version0.0.1
+#2026-4-11~2026-6-7 version2.8.7final-renovation.Version0.0.1
 
 # -*- coding: utf-8 -*-
 import os
@@ -26,7 +26,6 @@ try:
         gemini_model = genai.GenerativeModel('gemini-pro')
         GEMINI_AVAILABLE = True
         print("【Gemini】有効化されました")
-        print("【Gemini】APIキーが設定されていません - ダミーコメントを使用します")
 except ImportError:
     print("【Gemini】パッケージがインストールされていません - ダミーコメントを使用します")
 except Exception as e:
