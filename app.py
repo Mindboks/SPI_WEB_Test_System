@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.2final-renovation.Version0.0.1
+#2026-4-11~2026-6-7 version2.9.3final-renovation.Version0.0.1
 
 # -*- coding: utf-8 -*-
 import os
@@ -13,12 +13,6 @@ from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 
 
-import google.generativeai as genai
-# 設定済みのモデル一覧を取得して確認
-for m in genai.list_models():
-    if 'generateContent' in m.supported_generation_methods:
-        print(m.name)
-
 # ========== Gemini設定 ==========
 # Gemini設定
 GEMINI_AVAILABLE = False
@@ -30,7 +24,7 @@ try:
     if GEMINI_API_KEY:
         genai.configure(api_key=GEMINI_API_KEY)
         # 有料プラン対応モデル
-        gemini_model = genai.GenerativeModel('gemini-1.5-flash')  
+        gemini_model = genai.GenerativeModel('models/gemini-2.5-pro')
         GEMINI_AVAILABLE = True
         print(f"【Gemini】有効化されました (APIキー長: {len(GEMINI_API_KEY)})")
     else:
