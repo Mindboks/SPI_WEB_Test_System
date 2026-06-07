@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.8.2final
+#2026-4-11~2026-6-7 version2.8.3final-renovation.Version0.0.1
 
 # -*- coding: utf-8 -*-
 import os
@@ -309,6 +309,41 @@ def register():
 
 @app.route('/password_reset', methods=['GET', 'POST'])
 def password_reset():
+    if request.method == 'POST':
+        u_id = request.form.get('id', '').strip()
+        pwd = request.form.get('password', '')
+        
+        if not u_id or not pwd:
+            return jsonify({'success': False, 'message': 'IDとパスワードを入力してください。'})
+        
+        hashed_pwd = hash_password(pwd)
+        
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute('UPDATE users SET password = %s WHERE id = %s', (hashed_pwd, u_id))
+            
+            if cur.rowcount == 0:
+                # IDが見つからない場合
+                cur.close()
+                conn.close()
+                return jsonify({
+                    'success': False, 
+                    'not_found': True,
+                    'message': '入力されたIDは登録されていません。'
+                })
+            else:
+                conn.commit()
+                cur.close()
+                conn.close()
+                return jsonify({
+                    'success': True, 
+                    'message': 'パスワードを再設定しました。ログインしてください。'
+                })
+        except Exception as e:
+            print(f"パスワードリセットエラー: {e}")
+            return jsonify({'success': False, 'message': 'システムエラーが発生しました。'})
+    
     return render_template('password_reset.html')
 
 @app.route('/teacher/admin', methods=['GET', 'POST'])
