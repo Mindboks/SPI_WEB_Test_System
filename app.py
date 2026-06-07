@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.8.8final-renovation.Version0.0.1
+#2026-4-11~2026-6-7 version2.8.9final-renovation.Version0.0.1
 
 # -*- coding: utf-8 -*-
 import os
@@ -24,7 +24,7 @@ try:
     if GEMINI_API_KEY:
         genai.configure(api_key=GEMINI_API_KEY)
         # 有料プラン対応モデル
-        gemini_model = genai.GenerativeModel('gemini-1.5-pro')
+        gemini_model = genai.GenerativeModel('gemini-1.0-pro')    
         GEMINI_AVAILABLE = True
         print(f"【Gemini】有効化されました (APIキー長: {len(GEMINI_API_KEY)})")
     else:
@@ -33,7 +33,6 @@ except ImportError:
     print("【Gemini】パッケージがインストールされていません")
 except Exception as e:
     print(f"【Gemini】初期化エラー: {e}")
-
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -130,7 +129,7 @@ def generate_ai_comment(score, details_data):
     elif score >= 75:
         level = "良好"
         message = "安定した実力があります。"
-    elif score >= 60:
+    elif score >= 52:
         level = "合格"
         message = "合格ラインです。さらなる向上を目指しましょう。"
     elif score >= 40:
