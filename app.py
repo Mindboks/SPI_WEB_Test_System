@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.7.9
+#2026-4-11~2026-6-7 version2.8.1final
 
 # -*- coding: utf-8 -*-
 import os
@@ -440,7 +440,7 @@ def teacher_admin():
                 conn.commit()
                 cur.close()
                 conn.close()
-                flash(f'「{t_name}」を正常に登録しました。（{inserted_count}問登録 / {skipped_count}行スキップ）')
+                flash(f'「{t_name}」を正常に登録しました。（{inserted_count}問登録 ）')
                 
             except Exception as e:
                 if conn:
