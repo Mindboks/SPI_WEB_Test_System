@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.8.3final-renovation.Version0.0.1
+#2026-4-11~2026-6-7 version2.8.4final-renovation.Version0.0.1
 
 # -*- coding: utf-8 -*-
 import os
@@ -24,7 +24,7 @@ try:
         genai.configure(api_key=GEMINI_API_KEY)
         gemini_model = genai.GenerativeModel('gemini-2.0-flash')
         GEMINI_AVAILABLE = True
-        print("【Gemini】有効化されました")
+        #print("【Gemini】有効化されました")
     else:
         print("【Gemini】APIキーが設定されていません - ダミーコメントを使用します")
 except ImportError:
@@ -614,9 +614,6 @@ def submit_test(test_id):
             if user_answer and user_answer == correct_answer:
                 correct_count += 1
                 genre_stats[category]['correct'] += 1
-                print(f"【デバッグ】→ 正解！")
-            else:
-                print(f"【デバッグ】→ 不正解（回答なしまたは不一致）")
         
         # 分析データ作成
         labels = list(genre_stats.keys())
@@ -635,9 +632,9 @@ def submit_test(test_id):
         
         final_score = int((correct_count / total_q) * 100) if total_q > 0 else 0
         
-        print(f"【デバッグ】正解数: {correct_count}/{total_q}")
-        print(f"【デバッグ】最終スコア: {final_score}")
-        print(f"【デバッグ】分析結果: {analysis}")
+        #print(f"【デバッグ】正解数: {correct_count}/{total_q}")
+        #print(f"【デバッグ】最終スコア: {final_score}")
+        #print(f"【デバッグ】分析結果: {analysis}")
         
         # 結果を保存
         cur.execute('''
@@ -746,12 +743,12 @@ def api_get_question(test_id, q_no):
         ans_dict = session['answers']
         if data.get('skip'):
             ans_dict[str(q_no)] = ""  # キーは文字列のq_no
-            print(f"【APIデバッグ】スキップ: q_no={q_no}")
+            #print(f"【APIデバッグ】スキップ: q_no={q_no}")
         else:
             ans_dict[str(q_no)] = str(data.get('choice', ''))
-            print(f"【APIデバッグ】回答保存: q_no={q_no}, choice={data.get('choice', '')}")
+            #print(f"【APIデバッグ】回答保存: q_no={q_no}, choice={data.get('choice', '')}")
         session['answers'] = ans_dict
-        print(f"【APIデバッグ】現在の回答状況: {session['answers']}")
+        #print(f"【APIデバッグ】現在の回答状況: {session['answers']}")
 
     cur.execute('SELECT * FROM questions WHERE test_id = %s AND q_no = %s', (test_id, q_no))
     q = cur.fetchone()
