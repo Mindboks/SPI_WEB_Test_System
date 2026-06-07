@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.8.1final
+#2026-4-11~2026-6-7 version2.8.2final
 
 # -*- coding: utf-8 -*-
 import os
@@ -373,7 +373,6 @@ def teacher_admin():
                 question_col = find_column(reader, ['test questions'])
                 target_col = find_column(reader, ['target'])
                 answer_col = find_column(reader, ['Answer'])
-                print(f"【デバッグ】answer_col={answer_col}")
                 explanation_col = find_column(reader, ['Test explanation'])
 
                 choice_columns = []
@@ -426,7 +425,6 @@ def teacher_admin():
                         null_to_empty(a6), null_to_empty(a7), null_to_empty(a8), null_to_empty(a9), null_to_empty(a10),
                         null_to_empty(answer_val), null_to_empty(explanation)
                     )
-                    print(f"【デバッグ】値の数: {len(values)}, 値: {values}")
 
                     cur.execute('''
                         INSERT INTO questions (
@@ -447,8 +445,8 @@ def teacher_admin():
                     conn.rollback()
                     conn.close()
                 flash(f'CSV登録エラー: {str(e)}')
-                import traceback
-                traceback.print_exc()
+             #   import traceback 削除対象
+             #   traceback.print_exc()
         
         return redirect(url_for('teacher_admin'))
 
@@ -565,9 +563,6 @@ def submit_test(test_id):
         correct_count = 0
         genre_stats = {}
         
-        print(f"【デバッグ】ユーザー回答: {user_answers}")
-        print(f"【デバッグ】問題数: {total_q}")
-        
         for q in questions:
             q_no = str(q['q_no'])
             category = q['category'] or '未分類'
@@ -579,8 +574,6 @@ def submit_test(test_id):
             # ユーザーの回答を取得（キーは問題番号）
             user_answer = user_answers.get(q_no, '')
             correct_answer = str(q['answer']) if q['answer'] else ''
-            
-            print(f"【デバッグ】問題{q_no}: カテゴリ={category}, ユーザー回答={user_answer}, 正解={correct_answer}")
             
             # 回答が一致したら正解
             if user_answer and user_answer == correct_answer:

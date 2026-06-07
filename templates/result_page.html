@@ -170,7 +170,7 @@
             flex-grow: 1;
             white-space: pre-wrap;
             padding-right: 5px;
-            text-align: left;
+            text-align: left !important;
             /* 以下を追加 */
             text-indent: 0;
             margin: 0;
@@ -349,18 +349,12 @@
             const labelsAttr = dataElement.getAttribute('data-labels');
             const scoresAttr = dataElement.getAttribute('data-scores');
             
-            console.log('【デバッグ】data-labels:', labelsAttr);
-            console.log('【デバッグ】data-scores:', scoresAttr);
-            
             if (labelsAttr && labelsAttr !== 'null' && labelsAttr !== 'undefined' && labelsAttr !== '[]') {
                 labels = JSON.parse(labelsAttr);
             }
             if (scoresAttr && scoresAttr !== 'null' && scoresAttr !== 'undefined' && scoresAttr !== '[]') {
                 scores = JSON.parse(scoresAttr);
             }
-            
-            console.log('【デバッグ】カテゴリー:', labels);
-            console.log('【デバッグ】正解率:', scores);
             
         } catch(e) {
             console.error('データ解析エラー:', e);

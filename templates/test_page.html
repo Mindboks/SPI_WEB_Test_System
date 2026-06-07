@@ -355,7 +355,6 @@
                 sessionStorage.setItem("fullscreen_active", "true");
                 startFullscreenWatch();
             }).catch(err => {
-                console.log("全画面モードへの切り替えに失敗しましたが、試験を続行します。");
                 document.getElementById("fullscreen-blocker").style.display = "none";
                 sessionStorage.setItem("fullscreen_active", "true");
                 startFullscreenWatch();
