@@ -1,0 +1,19 @@
+{
+    "name": "浦和専門学校 CBTシステム",
+    "short_name": "浦和CBT",
+    "icons": [
+        {
+            "src": "/static/android-chrome-192x192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "/static/android-chrome-512x512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ],
+    "theme_color": "#10b981",
+    "background_color": "#ffffff",
+    "display": "standalone"
+}
