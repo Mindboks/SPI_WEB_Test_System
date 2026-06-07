@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.8.7final-renovation.Version0.0.1
+#2026-4-11~2026-6-7 version2.8.8final-renovation.Version0.0.1
 
 # -*- coding: utf-8 -*-
 import os
@@ -14,20 +14,23 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 
 
 # ========== Gemini設定 ==========
+# Gemini設定
 GEMINI_AVAILABLE = False
 gemini_model = None
 
 try:
     import google.generativeai as genai
     GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
-    # Geminiの設定
     if GEMINI_API_KEY:
         genai.configure(api_key=GEMINI_API_KEY)
-        gemini_model = genai.GenerativeModel('gemini-pro')
+        # 有料プラン対応モデル
+        gemini_model = genai.GenerativeModel('gemini-1.5-pro')
         GEMINI_AVAILABLE = True
-        print("【Gemini】有効化されました")
+        print(f"【Gemini】有効化されました (APIキー長: {len(GEMINI_API_KEY)})")
+    else:
+        print("【Gemini】APIキーが設定されていません")
 except ImportError:
-    print("【Gemini】パッケージがインストールされていません - ダミーコメントを使用します")
+    print("【Gemini】パッケージがインストールされていません")
 except Exception as e:
     print(f"【Gemini】初期化エラー: {e}")
 
