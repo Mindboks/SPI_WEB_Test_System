@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.0.3
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.0.4
 
 # -*- coding: utf-8 -*-
 import os
@@ -573,7 +573,7 @@ def student_dashboard():
 @app.route('/student/test/<int:test_id>/start', methods=['GET', 'POST'])
 def take_test(test_id):
     if session.get('role') != 'student':
-        flash("受験には生徒アカウントでのログインが必要です。")
+        flash("受験には学生アカウントでのログインが必要です。")
         return redirect(url_for('login'))
     
     session['answers'] = {}

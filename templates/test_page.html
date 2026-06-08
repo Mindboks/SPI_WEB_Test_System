@@ -40,16 +40,25 @@
 
                 <div class="text-center my-2 flex-shrink-0" id="target-area" style="display:none;">
                     <div class="display-4 fw-bold text-primary tracking-wider bg-primary-subtle py-2 px-4 rounded border border-primary-subtle" id="target-box" style="letter-spacing: 2px;">
-                        </div>
-                </div>
-
-                <div class="fs-4 text-dark mb-3 p-3 bg-light rounded border shadow-sm flex-shrink-0" id="question-text" style="line-height: 1.6; font-weight: 500;">
                     </div>
+                </div>
+                <div class="fs-4 text-dark mb-3 p-3 bg-light rounded border shadow-sm flex-shrink-0" id="question-text" style="line-height: 1.6; font-weight: 500;">
+                </div>
 
                 <div class="flex-grow-1 overflow-auto px-1">
-                    <div class="row row-cols-1 row-cols-md-2 g-2" id="choices-container">
-                        </div>
+                    <!-- 元のコード（すぐに戻せるようにコメントアウト） -->
+                    <!-- <div class="row row-cols-1 row-cols-md-2 g-2" id="choices-container"> -->
+                    <!-- </div> -->
+                    
+                    <!-- 推奨コード：下部に隙間を追加（mb-3） -->
+                    <div class="row row-cols-1 row-cols-md-2 g-2 mb-3" id="choices-container">
+                    </div>
+                    
+                    <!-- さらに隙間を広げたい場合（mb-4） -->
+                    <!-- <div class="row row-cols-1 row-cols-md-2 g-2 mb-4" id="choices-container"> -->
+                    <!-- </div> -->
                 </div>
+   
 
                 <div class="d-flex justify-content-between border-top pt-3 mt-2 flex-shrink-0">
                     <button type="button" onclick="submitAnswer(true)" class="btn btn-outline-warning fw-bold px-4">
