@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.0.1
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.0.2
 
 # -*- coding: utf-8 -*-
 import os
@@ -226,6 +226,33 @@ def before_request():
     
     if 'user_id' not in session:
         return redirect(url_for('login'))
+
+     # 悪意のあるパスをブロック
+    malicious_paths = [
+        'wp-admin', 'wp-includes', 'wp-content', 'xmlrpc.php',
+        'wlwmanifest.xml', 'install.php', 'wordpress', 'wp-json'
+    ]
+    
+    for path in malicious_paths:
+        if path in request.path.lower():
+            # 攻撃者にサイトが存在しないことを伝える
+            return "Not Found", 404
+    
+    # 静的ファイルはスキップ
+    if request.path.startswith('/static'):
+        return
+    
+    # 認証不要なパス
+    public_paths = ['/', '/login', '/logout', '/register', '/password_reset']
+    if request.path in public_paths:
+        return
+    
+    # セッションがない場合はログイン画面へ
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    if session.get('current_test_id') and session.permanent:
+        session.modified = True   
 # ========== ルーティング ==========
 @app.route('/')
 def index():
