@@ -10,6 +10,9 @@
             </h2>
             <div class="text-end">
                 <span class="badge bg-info text-dark p-2 me-2">クラス: {{ session.get('class_id') }}</span>
+                <a href="{{ url_for('motivation_form') }}" class="btn btn-success fw-bold me-2" style="min-width: 170px;">
+                    <i class="bi bi-pencil-square"></i> しゅうしょくサポート
+                </a>
                 <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-sm fw-bold"><i class="bi bi-box-arrow-right"></i> ログアウト</a>
             </div>
         </div>
