@@ -868,7 +868,7 @@ def generate_motivation():
 
 
 def create_easy_japanese_prompt(data):
-    """やさしい日本語用のプロンプトを作成（浦和専門学校・必須項目対応版）"""
+    """やさしい日本語用のプロンプトを作成（専門学生らしい品格ある表現版）"""
     
     # 大学状況の変換
     university_status_text = {
@@ -878,20 +878,20 @@ def create_easy_japanese_prompt(data):
     }.get(data.get('university_status', 'none'), '行っていない')
     
     # リーダー経験の変換
-    leader_exp_text = 'ある' if data.get('has_leader_exp') == 'yes' else 'ない'
+    leader_exp_text = 'あり' if data.get('has_leader_exp') == 'yes' else 'なし'
     
     # アルバイト以外の仕事の処理
     if data.get('other_job_exists') == 'yes':
-        other_job_text = f"ある（会社名: {data.get('other_job_company', '')}）"
+        other_job_text = f"あり（会社名: {data.get('other_job_company', '')}）"
     else:
-        other_job_text = "ない"
+        other_job_text = "なし"
     
     prompt = f"""
-あなたは留学生の就職をサポートする専門家です。
-「浦和専門学校」の学生が就職活動で使う「志望動機」「趣味・特技」「自己PR」をやさしい日本語で書いてください。
+あなたは専門学校の学生が就職活動で使う「志望動機」「趣味・特技」「自己PR」を書くプロのライターです。
+以下の学生の情報をもとに、**品格があり、説得力のある文章**を書いてください。
 
 【学生の情報】
-■ 基本情報（必須）
+■ 基本情報
 - 志望する会社: {data.get('company_name', '')}
 - 志望する仕事: {data.get('desired_position', '')}
 
@@ -901,21 +901,21 @@ def create_easy_japanese_prompt(data):
 - 大学の専攻: {data.get('major', '')}
 - 大学でがんばったこと: {data.get('university_efforts', '')}
 
-■ アルバイト・仕事（すべて必須）
+■ アルバイト・仕事
 - 今のアルバイト: {data.get('current_part_time', '')}
 - アルバイトの内容: {data.get('part_time_description', '')}
 - アルバイト以外の仕事: {other_job_text}
 - リーダー経験: {leader_exp_text}
 - アルバイトでの成果: {data.get('part_time_achievement', '')}
 
-■ スキル（すべて必須）
+■ スキル
 - 話せる言語: {data.get('languages', '')}
 - 資格: {data.get('certifications', '')}
 
 ■ 自分のこと
-- 自分のいいところ: {data.get('strengths', '')}
-- 自分のにがて: {data.get('weaknesses', '')}
-- にがての克服方法: {data.get('how_overcome', '')}
+- 自分の強み: {data.get('strengths', '')}
+- 自分の弱み: {data.get('weaknesses', '')}
+- 弱みの克服方法: {data.get('how_overcome', '')}
 
 ■ 趣味・特技
 - 趣味: {data.get('hobbies', '')}
@@ -926,27 +926,32 @@ def create_easy_japanese_prompt(data):
 - 将来の夢: {data.get('career_plan', '')}
 - アピールしたいこと: {data.get('appeal_points', '')}
 
-【出力ルール（とても重要）】
-1. すべて「やさしい日本語」で書く
-2. 難しい漢字は使わない（例：迅速→はやい、遂行→おこなう、考慮→かんがえる）
-3. 1文は短く（〜です。〜ます。〜しました。）
+【文章のルール】
+1. 基本的な日本語の漢字は使用して構いません（例：私、学生、会社、将来、経験）
+2. ただし、以下のような難しい言い回しは避けてください：
+   - 弊社、貴社 → 「御社」
+   - 〜させていただく → 使わない
+   - 〜という認識でおります → 「〜だと思います」
+   - 〜に対するアプローチ → 「〜への取り組み」
+3. 1文は短く、明確に（体言止めは避ける）
 4. 「です・ます」調で統一する
-5. 情報がない項目は無視して書く
+5. 具体的な数字やエピソードを入れると説得力が増す
+6. 結論→理由→具体例→まとめの構造を意識する
 
 【出力の長さ】
-- 志望動機: 200〜250字（全体の約40%）
-- 趣味・特技: 80〜100字（全体の約18%）
-- 自己PR: 220〜270字（全体の約42%）
+- 志望動機: 220〜270字
+- 趣味・特技: 100〜130字
+- 自己PR: 240〜290字
 
 【出力形式】
 【志望動機】
-（ここに本文）
+（本文）
 
 【趣味・特技】
-（ここに本文）
+（本文）
 
 【自己PR】
-（ここに本文）
+（本文）
 """
     return prompt
 
