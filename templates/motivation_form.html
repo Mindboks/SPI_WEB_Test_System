@@ -1,7 +1,15 @@
 {% extends "layout.html" %}
 {% block title %}しゅうしょくサポート - 志望動機・自己PR作成{% endblock %}
 {% block content %}
-
+<style>
+    /* スマホでセレクトボックスの高さ調整 */
+    @media (max-width: 768px) {
+        select.form-select {
+            font-size: 16px;  /* iOSでズーム防止 */
+            padding: 10px;
+        }
+    }
+</style>
 <div class="row justify-content-center" style="margin-top: 2%;">
     <div class="col-md-10">
         <div class="card shadow-lg border-0 rounded-4">
@@ -35,7 +43,45 @@
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label class="form-label fw-bold">② 志望する仕事（職種） <span class="text-danger">※</span></label>
-                                <input type="text" name="desired_position" class="form-control" placeholder="例: エンジニア、営業" required>
+                                <select name="desired_position" class="form-select" required>
+                                    <option value="">選択してください</option>
+                                    <option value="公務員・法律・政治に関する仕事">公務員・法律・政治に関する仕事</option>
+                                    <option value="ビジネス（営業、事務、企画系）に関する仕事">ビジネス（営業、事務、企画系）に関する仕事</option>
+                                    <option value="ビジネス（サービス、販売系）に関する仕事">ビジネス（サービス、販売系）に関する仕事</option>
+                                    <option value="金融・経済・不動産に関する仕事">金融・経済・不動産に関する仕事</option>
+                                    <option value="国際に関する仕事">国際に関する仕事</option>
+                                    <option value="語学（英語・その他）に関する仕事">語学（英語・その他）に関する仕事</option>
+                                    <option value="旅行・観光に関する仕事">旅行・観光に関する仕事</option>
+                                    <option value="ホテル・ブライダルに関する仕事">ホテル・ブライダルに関する仕事</option>
+                                    <option value="交通・旅客サービスに関する仕事">交通・旅客サービスに関する仕事</option>
+                                    <option value="マスコミ・芸能に関する仕事">マスコミ・芸能に関する仕事</option>
+                                    <option value="映画・映像・番組制作に関する仕事">映画・映像・番組制作に関する仕事</option>
+                                    <option value="広告・新聞・雑誌・本に関する仕事">広告・新聞・雑誌・本に関する仕事</option>
+                                    <option value="アニメ・声優・マンガに関する仕事">アニメ・声優・マンガに関する仕事</option>
+                                    <option value="ミュージシャン・演奏家に関する仕事">ミュージシャン・演奏家に関する仕事</option>
+                                    <option value="音楽・音響・イベントに関する仕事">音楽・音響・イベントに関する仕事</option>
+                                    <option value="デザインに関する仕事">デザインに関する仕事</option>
+                                    <option value="芸術・写真・イラストに関する仕事">芸術・写真・イラストに関する仕事</option>
+                                    <option value="ファッション・服飾に関する仕事">ファッション・服飾に関する仕事</option>
+                                    <option value="ゲームに関する仕事">ゲームに関する仕事</option>
+                                    <option value="コンピュータ（エンジニア系）に関する仕事">コンピュータ（エンジニア系）に関する仕事</option>
+                                    <option value="コンピュータ（クリエイティブ系）に関する仕事">コンピュータ（クリエイティブ系）に関する仕事</option>
+                                    <option value="コンピュータ（ビジネス系）に関する仕事">コンピュータ（ビジネス系）に関する仕事</option>
+                                    <option value="自動車・航空・宇宙に関する仕事">自動車・航空・宇宙に関する仕事</option>
+                                    <option value="機械・電気・化学に関する仕事">機械・電気・化学に関する仕事</option>
+                                    <option value="建築・土木・インテリアに関する仕事">建築・土木・インテリアに関する仕事</option>
+                                    <option value="動物・畜産・水産に関する仕事">動物・畜産・水産に関する仕事</option>
+                                    <option value="植物・フラワー・園芸に関する仕事">植物・フラワー・園芸に関する仕事</option>
+                                    <option value="自然・環境・バイオに関する仕事">自然・環境・バイオに関する仕事</option>
+                                    <option value="美容・理容・ヘアメイクに関する仕事">美容・理容・ヘアメイクに関する仕事</option>
+                                    <option value="メイク・ネイル・エステに関する仕事">メイク・ネイル・エステに関する仕事</option>
+                                    <option value="保育・教育に関する仕事">保育・教育に関する仕事</option>
+                                    <option value="福祉に関する仕事">福祉に関する仕事</option>
+                                    <option value="医療・看護・歯科・薬に関する仕事">医療・看護・歯科・薬に関する仕事</option>
+                                    <option value="リハビリ・マッサージ・心理に関する仕事">リハビリ・マッサージ・心理に関する仕事</option>
+                                    <option value="健康・スポーツに関する仕事">健康・スポーツに関する仕事</option>
+                                    <option value="調理・栄養・製菓に関する仕事">調理・栄養・製菓に関する仕事</option>
+                                </select>
                             </div>
                         </div>
                     </div>
