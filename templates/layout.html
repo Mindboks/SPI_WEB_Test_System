@@ -4,31 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}{% endblock %} | 浦和専門学校</title>
-    <!-- ファビコン設定 -->
-    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
-    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}">
-    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}">
-    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
-    <link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/bootstrap-icons.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
     <style>
-        /* 既存のスタイル */
         .navbar { margin-bottom: 0 !important; padding-top: 0.5rem; padding-bottom: 0.5rem; }
-        
-        /* フッターのスタイルを追加 */
         .footer {
             margin-top: 3rem;
             padding: 1rem 0;
             background-color: #f8f9fa;
             border-top: 1px solid #dee2e6;
+            text-align: center;
+            font-size: 0.85rem;
+            color: #6c757d;
         }
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-dark shadow-sm">
+    <nav class="navbar navbar-dark shadow-sm" style="background-color: #fff; border-bottom: 2px solid #0d6efd;">
         <div class="container">
             <a class="navbar-brand fw-bold d-flex align-items-center" href="{{ url_for('index') }}" style="font-size: 1.5rem; color: #0d6efd;">
                 <i class="bi bi-mortarboard-fill" style="margin-right: 10px; font-size: 2rem;"></i>
@@ -46,29 +40,24 @@
         </div>
     </nav>
 
+    <!-- main content - blockは1回だけ -->
     <div class="container mt-4">
         {% block content %}{% endblock %}
     </div>
-    <div class="container mt-4">
-    {% block content %}{% endblock %}
-</div>
 
-<!-- フッター -->
-<footer style="margin-top: 3rem; padding: 1rem 0; background-color: #f8f9fa; border-top: 1px solid #dee2e6;">
-    <div class="container text-center">
-        <p class="mb-1">
-            <i class="bi bi-c-circle"></i> 2026 浦和専門学校 System
-        </p>
-        <p class="mb-0 small">
-            Built with <i class="bi bi-heart-fill text-danger"></i> by <strong>Ikeda</strong> | 
-                    ver.<strong>2.9.5final-renovation.Version0.1.1</strong>
-        </p>
-    </div>
-</footer>
+    <!-- フッター -->
+    <footer class="footer">
+        <div class="container">
+            <p class="mb-0">
+                <i class="bi bi-c-circle"></i> 2026 浦和専門学校 System
+                <span class="mx-2">|</span>
+                Built with <i class="bi bi-heart-fill text-danger"></i> by <strong>Ikeda</strong>
+                <span class="mx-2">|</span>
+                ver.2.9.5final-renovation.Version0.1.1
+            </p>
+        </div>
+    </footer>
 
-<script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
-</body>
-</html>
     <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
 </body>
 </html>
