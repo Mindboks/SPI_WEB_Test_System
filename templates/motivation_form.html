@@ -1,0 +1,384 @@
+{% extends "layout.html" %}
+{% block title %}しゅうしょくサポート - 志望動機・自己PR作成{% endblock %}
+{% block content %}
+
+<div class="row justify-content-center" style="margin-top: 2%;">
+    <div class="col-md-10">
+        <div class="card shadow-lg border-0 rounded-4">
+            <div class="card-header bg-success text-white py-3 rounded-top-4">
+                <h3 class="mb-0 fw-bold text-center">
+                    <i class="bi bi-magic me-2"></i> AIしゅうしょくサポート
+                </h3>
+                <p class="text-center mb-0 mt-2 small">（志望動機・趣味特技・自己PR作成）</p>
+            </div>
+            <div class="card-body p-4">
+                
+                <!-- ローディング表示（初期は非表示） -->
+                <div id="loading-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9999; justify-content: center; align-items: center;">
+                    <div class="text-center text-white">
+                        <div class="spinner-border text-light" style="width: 4rem; height: 4rem;" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-3 fs-5">AIがぶんしょうをつくっています...</p>
+                        <p class="small">（少々お待ちください）</p>
+                    </div>
+                </div>
+                
+                <form id="motivation-form">
+                    <!-- きほんじょうほう -->
+                    <div class="mb-4 p-3 bg-light rounded-3">
+                        <h5 class="fw-bold text-primary mb-3"><i class="bi bi-star-fill me-2"></i> 【きほんじょうほう】</h5>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold">① 志望する会社の名前 <span class="text-danger">※</span></label>
+                                <input type="text" name="company_name" class="form-control" placeholder="例: 株式会社○○" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold">② 志望する仕事（職種） <span class="text-danger">※</span></label>
+                                <input type="text" name="desired_position" class="form-control" placeholder="例: エンジニア、営業" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- がっこうせいかつ -->
+                    <div class="mb-4 p-3 bg-light rounded-3">
+                        <h5 class="fw-bold text-primary mb-3"><i class="bi bi-book-fill me-2"></i> 【がっこうせいかつ】</h5>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">③ 高校でがんばったこと <span class="text-danger">※</span></label>
+                            <textarea name="high_school_efforts" class="form-control" rows="2" placeholder="例: サッカー部でキャプテン / 勉強で学年トップ10 / 文化祭でリーダー" required></textarea>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold">④ 大学に行っていましたか？</label>
+                                <select name="university_status" class="form-select">
+                                    <option value="none">行っていない</option>
+                                    <option value="dropout">中退した</option>
+                                    <option value="graduate">卒業した</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold">⑤ 大学の専攻（専門）</label>
+                                <input type="text" name="major" class="form-control" placeholder="なしの場合は「なし」">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">⑥ 大学でがんばったこと</label>
+                            <textarea name="university_efforts" class="form-control" rows="2" placeholder="例: ゼミでリーダー / プログラミングを勉強"></textarea>
+                        </div>
+                    </div>
+                    
+                    <!-- アルバイト・しごと -->
+                    <div class="mb-4 p-3 bg-light rounded-3">
+                        <h5 class="fw-bold text-primary mb-3"><i class="bi bi-briefcase-fill me-2"></i> 【アルバイト・しごと】</h5>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold">⑦ いまのアルバイト <span class="text-danger">※</span></label>
+                                <input type="text" name="current_part_time" class="form-control" placeholder="例: コンビニ、レストラン" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold">⑧ アルバイトのないよう <span class="text-danger">※</span></label>
+                                <input type="text" name="part_time_description" class="form-control" placeholder="例: レジ、接客、在庫管理" required>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold">⑨ アルバイト以外の仕事 <span class="text-danger">※</span></label>
+                                <select name="other_job_exists" class="form-select" id="other-job-select">
+                                    <option value="no">ない</option>
+                                    <option value="yes">ある</option>
+                                </select>
+                                <input type="text" name="other_job_company" class="form-control mt-2" placeholder="会社名（ある場合）" style="display: none;">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold">⑩ リーダーや店長のけいけん <span class="text-danger">※</span></label>
+                                <select name="has_leader_exp" class="form-select" required>
+                                    <option value="">選択してください</option>
+                                    <option value="yes">ある</option>
+                                    <option value="no">ない</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">⑪ アルバイトでがんばったこと（数字があれば） <span class="text-danger">※</span></label>
+                            <textarea name="part_time_achievement" class="form-control" rows="2" placeholder="例: 毎日10人におせっきょうした / うりあげが20%あがった" required></textarea>
+                        </div>
+                    </div>
+                    
+                    <!-- とくぎ・スキル -->
+                    <div class="mb-4 p-3 bg-light rounded-3">
+                        <h5 class="fw-bold text-primary mb-3"><i class="bi bi-trophy-fill me-2"></i> 【とくぎ・スキル】</h5>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold">⑫ 話せる言語 <span class="text-danger">※</span></label>
+                                <input type="text" name="languages" class="form-control" placeholder="例: 日本語、英語、中国語" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold">⑬ もっている資格 <span class="text-danger">※</span></label>
+                                <input type="text" name="certifications" class="form-control" placeholder="例: JLPT N2, 簿記3級" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 自分のこと -->
+                    <div class="mb-4 p-3 bg-light rounded-3">
+                        <h5 class="fw-bold text-primary mb-3"><i class="bi bi-emoji-smile-fill me-2"></i> 【自分のこと】</h5>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">⑭ 自分のいいところ（長所） <span class="text-danger">※</span></label>
+                            <input type="text" name="strengths" class="form-control" placeholder="例: せっきょくてき / しんぼうづよい / チームワーク" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">⑮ 自分のにがてなところ（短所）</label>
+                            <input type="text" name="weaknesses" class="form-control" placeholder="例: すぐきんちょうする / じかんがかかる">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">⑯ にがての克服方法 <span class="text-danger">※</span></label>
+                            <textarea name="how_overcome" class="form-control" rows="2" placeholder="例: 毎日練習する / メモを取る / 人前で話す練習をする" required></textarea>
+                        </div>
+                    </div>
+                    
+                    <!-- しゅみ・とくぎ -->
+                    <div class="mb-4 p-3 bg-light rounded-3">
+                        <h5 class="fw-bold text-primary mb-3"><i class="bi bi-heart-fill me-2"></i> 【しゅみ・とくぎ】</h5>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">⑰ 趣味（しゅみ）・特技（とくぎ） <span class="text-danger">※</span></label>
+                            <input type="text" name="hobbies" class="form-control" placeholder="例: サッカー、アニメ" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">⑱ その趣味からまなんだこと</label>
+                            <textarea name="learned_from_hobby" class="form-control" rows="2" placeholder="例: チームワークの大切さ / 継続する力"></textarea>
+                        </div>
+                    </div>
+                    
+                    <!-- これからのこと -->
+                    <div class="mb-4 p-3 bg-light rounded-3">
+                        <h5 class="fw-bold text-primary mb-3"><i class="bi bi-rocket-fill me-2"></i> 【これからのこと】</h5>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">⑲ この会社を選んだりゆう</label>
+                            <textarea name="motivation_reason" class="form-control" rows="2" placeholder="例: 技術力が高い / 海外で働ける"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">⑳ 将来（しょうらい）の夢やゴール <span class="text-danger">※</span></label>
+                            <textarea name="career_plan" class="form-control" rows="2" placeholder="例: 自分の会社を持つ / エンジニアとして成長する" required></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">㉑ 自分をアピールしたいこと（なんでも）</label>
+                            <textarea name="appeal_points" class="form-control" rows="2" placeholder="自由に書いてください"></textarea>
+                        </div>
+                    </div>
+                    
+                    <!-- ボタン -->
+                    <div class="d-flex justify-content-center gap-3 mt-4">
+                        <button type="button" onclick="generateMotivation()" class="btn btn-success btn-lg px-5 py-2 fw-bold">
+                            <i class="bi bi-magic me-2"></i> ぶんしょうをつくる
+                        </button>
+                        <button type="reset" class="btn btn-outline-secondary btn-lg px-4 py-2 fw-bold">
+                            <i class="bi bi-eraser me-2"></i> クリア
+                        </button>
+                        <a href="{{ url_for('student_dashboard') }}" class="btn btn-outline-danger btn-lg px-4 py-2 fw-bold">
+                            <i class="bi bi-arrow-left me-2"></i> もどる
+                        </a>
+                    </div>
+                </form>
+                
+                <!-- 結果表示エリア -->
+                <div id="result-area" style="display: none; margin-top: 40px;">
+                    <hr class="my-4">
+                    <h4 class="fw-bold text-success text-center mb-4">
+                        <i class="bi bi-check-circle-fill me-2"></i> AIせいせいけっか
+                    </h4>
+                    
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <div class="card border-success">
+                                <div class="card-header bg-success text-white fw-bold">
+                                    <i class="bi bi-building me-2"></i> 【志望動機】
+                                </div>
+                                <div class="card-body" id="motivation-text" style="white-space: pre-wrap; line-height: 1.8;">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <div class="card border-info">
+                                <div class="card-header bg-info text-white fw-bold">
+                                    <i class="bi bi-heart me-2"></i> 【趣味・特技】
+                                </div>
+                                <div class="card-body" id="hobby-text" style="white-space: pre-wrap; line-height: 1.8;">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <div class="card border-primary">
+                                <div class="card-header bg-primary text-white fw-bold">
+                                    <i class="bi bi-person-badge me-2"></i> 【自己PR】
+                                </div>
+                                <div class="card-body" id="selfpr-text" style="white-space: pre-wrap; line-height: 1.8;">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-center gap-3 mt-3">
+                        <button onclick="copyToClipboard('motivation-text')" class="btn btn-outline-success">
+                            <i class="bi bi-clipboard me-1"></i> 志望動機をコピー
+                        </button>
+                        <button onclick="copyToClipboard('hobby-text')" class="btn btn-outline-info">
+                            <i class="bi bi-clipboard me-1"></i> 趣味・特技をコピー
+                        </button>
+                        <button onclick="copyToClipboard('selfpr-text')" class="btn btn-outline-primary">
+                            <i class="bi bi-clipboard me-1"></i> 自己PRをコピー
+                        </button>
+                        <button onclick="regenerateMotivation()" class="btn btn-warning">
+                            <i class="bi bi-arrow-repeat me-1"></i> さいせいせい
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // アルバイト以外の仕事の表示切替
+    document.getElementById('other-job-select').addEventListener('change', function() {
+        const otherJobInput = document.querySelector('input[name="other_job_company"]');
+        if (this.value === 'yes') {
+            otherJobInput.style.display = 'block';
+            otherJobInput.required = true;
+        } else {
+            otherJobInput.style.display = 'none';
+            otherJobInput.required = false;
+            otherJobInput.value = '';
+        }
+    });
+    
+    // フォームデータを取得する関数
+    function getFormData() {
+        const otherJobExists = document.querySelector('select[name="other_job_exists"]').value;
+        const otherJobCompany = document.querySelector('input[name="other_job_company"]').value;
+        
+        return {
+            company_name: document.querySelector('input[name="company_name"]').value,
+            desired_position: document.querySelector('input[name="desired_position"]').value,
+            high_school_efforts: document.querySelector('textarea[name="high_school_efforts"]').value,
+            university_status: document.querySelector('select[name="university_status"]').value,
+            major: document.querySelector('input[name="major"]').value,
+            university_efforts: document.querySelector('textarea[name="university_efforts"]').value,
+            current_part_time: document.querySelector('input[name="current_part_time"]').value,
+            part_time_description: document.querySelector('input[name="part_time_description"]').value,
+            other_job_exists: otherJobExists,
+            other_job_company: otherJobExists === 'yes' ? otherJobCompany : '',
+            has_leader_exp: document.querySelector('select[name="has_leader_exp"]').value,
+            part_time_achievement: document.querySelector('textarea[name="part_time_achievement"]').value,
+            languages: document.querySelector('input[name="languages"]').value,
+            certifications: document.querySelector('input[name="certifications"]').value,
+            strengths: document.querySelector('input[name="strengths"]').value,
+            weaknesses: document.querySelector('input[name="weaknesses"]').value,
+            how_overcome: document.querySelector('textarea[name="how_overcome"]').value,
+            hobbies: document.querySelector('input[name="hobbies"]').value,
+            learned_from_hobby: document.querySelector('textarea[name="learned_from_hobby"]').value,
+            motivation_reason: document.querySelector('textarea[name="motivation_reason"]').value,
+            career_plan: document.querySelector('textarea[name="career_plan"]').value,
+            appeal_points: document.querySelector('textarea[name="appeal_points"]').value
+        };
+    }
+    
+    // バリデーション
+    function validateForm(data) {
+        const required = [
+            'company_name', 'desired_position', 'high_school_efforts',
+            'current_part_time', 'part_time_description', 'has_leader_exp',
+            'part_time_achievement', 'languages', 'certifications',
+            'strengths', 'how_overcome', 'hobbies', 'career_plan'
+        ];
+        
+        for (let field of required) {
+            if (!data[field] || data[field].trim() === '') {
+                alert('※必須項目が入力されていません。すべて入力してください。');
+                return false;
+            }
+        }
+        
+        if (!data.has_leader_exp) {
+            alert('⑩ リーダー経験を選択してください。');
+            return false;
+        }
+        
+        return true;
+    }
+    
+    // AI生成関数
+    async function generateMotivation() {
+        const formData = getFormData();
+        
+        if (!validateForm(formData)) {
+            return;
+        }
+        
+        // ローディング表示
+        document.getElementById('loading-overlay').style.display = 'flex';
+        
+        try {
+            const response = await fetch('/api/generate_motivation', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(formData)
+            });
+            
+            const result = await response.json();
+            
+            if (result.error) {
+                alert('エラーが発生しました: ' + result.error);
+                return;
+            }
+            
+            // 結果を表示
+            document.getElementById('motivation-text').innerHTML = result.motivation.replace(/\n/g, '<br>');
+            document.getElementById('hobby-text').innerHTML = result.hobby.replace(/\n/g, '<br>');
+            document.getElementById('selfpr-text').innerHTML = result.self_pr.replace(/\n/g, '<br>');
+            document.getElementById('result-area').style.display = 'block';
+            
+            // 結果までスクロール
+            document.getElementById('result-area').scrollIntoView({ behavior: 'smooth' });
+            
+        } catch (error) {
+            console.error('Error:', error);
+            alert('通信エラーが発生しました。もう一度お試しください。');
+        } finally {
+            document.getElementById('loading-overlay').style.display = 'none';
+        }
+    }
+    
+    // 再生成
+    function regenerateMotivation() {
+        generateMotivation();
+    }
+    
+    // コピー機能
+    function copyToClipboard(elementId) {
+        const element = document.getElementById(elementId);
+        const text = element.innerText;
+        
+        navigator.clipboard.writeText(text).then(() => {
+            alert('コピーしました！');
+        }).catch(() => {
+            alert('コピーに失敗しました。');
+        });
+    }
+</script>
+
+<style>
+    #result-area .card-body {
+        min-height: 180px;
+        background-color: #f8f9fa;
+    }
+    .form-control:focus, .form-select:focus {
+        border-color: #28a745;
+        box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25);
+    }
+</style>
+
+{% endblock %}

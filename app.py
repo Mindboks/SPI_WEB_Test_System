@@ -822,6 +822,213 @@ def check_test_session(test_id):
         return jsonify({'valid': False, 'redirect': url_for('login')})
     return jsonify({'valid': True})
 
+# ========== 志望動機作成機能（留学生・やさしい日本語版） ==========
+
+@app.route('/motivation_form')
+def motivation_form():
+    if session.get('role') != 'student':
+        return redirect(url_for('login'))
+    return render_template('motivation_form.html')
+
+
+@app.route('/api/generate_motivation', methods=['POST'])
+def generate_motivation():
+    """AIで志望動機・趣味特技・自己PRを生成（やさしい日本語）"""
+    if session.get('role') != 'student':
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    data = request.get_json()
+    
+    # 必須項目のバリデーション
+    required_fields = [
+        'company_name', 'desired_position', 'high_school_efforts',
+        'current_part_time', 'part_time_description', 'has_leader_exp',
+        'part_time_achievement', 'languages', 'certifications',
+        'strengths', 'how_overcome', 'hobbies', 'career_plan'
+    ]
+    
+    missing_fields = [f for f in required_fields if not data.get(f)]
+    if missing_fields:
+        return jsonify({'error': f'必須項目が不足しています: {missing_fields}'}), 400
+    
+    # プロンプトを作成
+    prompt = create_easy_japanese_prompt(data)
+    
+    if GEMINI_AVAILABLE and gemini_model:
+        try:
+            response = gemini_model.generate_content(prompt)
+            result = parse_ai_response(response.text)
+            return jsonify(result)
+        except Exception as e:
+            print(f"【Geminiエラー】: {e}")
+            return jsonify(get_sample_easy_motivation()), 200
+    else:
+        # Geminiがない場合はサンプルを返す
+        return jsonify(get_sample_easy_motivation()), 200
+
+
+def create_easy_japanese_prompt(data):
+    """やさしい日本語用のプロンプトを作成（浦和専門学校・必須項目対応版）"""
+    
+    # 大学状況の変換
+    university_status_text = {
+        'none': '行っていない',
+        'dropout': '中退した',
+        'graduate': '卒業した'
+    }.get(data.get('university_status', 'none'), '行っていない')
+    
+    # リーダー経験の変換
+    leader_exp_text = 'ある' if data.get('has_leader_exp') == 'yes' else 'ない'
+    
+    # アルバイト以外の仕事の処理
+    if data.get('other_job_exists') == 'yes':
+        other_job_text = f"ある（会社名: {data.get('other_job_company', '')}）"
+    else:
+        other_job_text = "ない"
+    
+    prompt = f"""
+あなたは留学生の就職をサポートする専門家です。
+「浦和専門学校」の学生が就職活動で使う「志望動機」「趣味・特技」「自己PR」をやさしい日本語で書いてください。
+
+【学生の情報】
+■ 基本情報（必須）
+- 志望する会社: {data.get('company_name', '')}
+- 志望する仕事: {data.get('desired_position', '')}
+
+■ 学校生活
+- 高校でがんばったこと: {data.get('high_school_efforts', '')}
+- 大学の状況: {university_status_text}
+- 大学の専攻: {data.get('major', '')}
+- 大学でがんばったこと: {data.get('university_efforts', '')}
+
+■ アルバイト・仕事（すべて必須）
+- 今のアルバイト: {data.get('current_part_time', '')}
+- アルバイトの内容: {data.get('part_time_description', '')}
+- アルバイト以外の仕事: {other_job_text}
+- リーダー経験: {leader_exp_text}
+- アルバイトでの成果: {data.get('part_time_achievement', '')}
+
+■ スキル（すべて必須）
+- 話せる言語: {data.get('languages', '')}
+- 資格: {data.get('certifications', '')}
+
+■ 自分のこと
+- 自分のいいところ: {data.get('strengths', '')}
+- 自分のにがて: {data.get('weaknesses', '')}
+- にがての克服方法: {data.get('how_overcome', '')}
+
+■ 趣味・特技
+- 趣味: {data.get('hobbies', '')}
+- 趣味から学んだこと: {data.get('learned_from_hobby', '')}
+
+■ 志望理由・将来
+- 会社を選んだ理由: {data.get('motivation_reason', '')}
+- 将来の夢: {data.get('career_plan', '')}
+- アピールしたいこと: {data.get('appeal_points', '')}
+
+【出力ルール（とても重要）】
+1. すべて「やさしい日本語」で書く
+2. 難しい漢字は使わない（例：迅速→はやい、遂行→おこなう、考慮→かんがえる）
+3. 1文は短く（〜です。〜ます。〜しました。）
+4. 「です・ます」調で統一する
+5. 情報がない項目は無視して書く
+
+【出力の長さ】
+- 志望動機: 200〜250字（全体の約40%）
+- 趣味・特技: 80〜100字（全体の約18%）
+- 自己PR: 220〜270字（全体の約42%）
+
+【出力形式】
+【志望動機】
+（ここに本文）
+
+【趣味・特技】
+（ここに本文）
+
+【自己PR】
+（ここに本文）
+"""
+    return prompt
+
+
+def parse_ai_response(text):
+    """AIのレスポンスをパース"""
+    result = {
+        'motivation': '',
+        'hobby': '',
+        'self_pr': ''
+    }
+    
+    # 「【志望動機】」で分割
+    if '【志望動機】' in text:
+        parts = text.split('【志望動機】')
+        if len(parts) > 1:
+            after = parts[1]
+            if '【趣味・特技】' in after:
+                motivation, rest = after.split('【趣味・特技】', 1)
+                result['motivation'] = motivation.strip()
+                if '【自己PR】' in rest:
+                    hobby, self_pr = rest.split('【自己PR】', 1)
+                    result['hobby'] = hobby.strip()
+                    result['self_pr'] = self_pr.strip()
+                else:
+                    result['hobby'] = rest.strip()
+            else:
+                result['motivation'] = after.strip()
+    elif '【志望理由】' in text:
+        # 代替フォーマット
+        parts = text.split('【志望理由】')
+        if len(parts) > 1:
+            after = parts[1]
+            if '【自己PR】' in after:
+                motivation, rest = after.split('【自己PR】', 1)
+                result['motivation'] = motivation.strip()
+                result['self_pr'] = rest.strip()
+            else:
+                result['motivation'] = after.strip()
+    else:
+        # パースに失敗したら全文を志望動機に
+        result['motivation'] = text.strip()
+    
+    return result
+
+
+def get_sample_easy_motivation():
+    """サンプルデータ（Geminiがない場合・浦和専門学校版）"""
+    return {
+        'motivation': '''私はコンピューターの勉強をしたいと思い、浦和専門学校で学びました。
+学校でプログラミングの基礎を勉強しました。
+
+アルバイトでは、コンビニでお客さまのサポートをしていました。
+そのとき、「わかりやすい説明」が大事だと学びました。
+
+貴社は「お客さまにやさしい技術」を大切にしています。
+私もこの考え方に共感しました。
+
+私の「わかりやすく説明する力」を活かして、
+お客さまに喜ばれるサービスを作りたいです。''',
+        'hobby': '''私の趣味はアニメを見ることです。
+アニメから、日本語の新しい表現を学びました。
+この経験は、仕事でも役に立つと思います。
+みんなが楽しく話せるように、コミュニケーションを大切にします。''',
+        'self_pr': '''私の強みは「あきらめない心」です。
+
+なぜなら、どんな難しいことでも続けることができるからです。
+
+高校のとき、日本語がぜんぜん話せませんでした。
+でも、毎日1時間勉強を続けました。
+その結果、1年で日本語のテストに合格しました。
+
+アルバイトでは、レジの仕事をがんばりました。
+毎日「ありがとう」と笑顔で言うことを続けました。
+
+この「あきらめない力」を会社でも活かします。
+どんな仕事でも最後までやりとげます。'''
+    }
+
+
+
+
 # ========== サーバー起動 ==========
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
