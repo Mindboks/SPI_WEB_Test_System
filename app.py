@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.2.2
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.2.4
 
 # -*- coding: utf-8 -*-
 import os
@@ -8,13 +8,14 @@ import json
 import hashlib
 import re
 import psycopg2
+import threading
+from functools import lru_cache
 
 from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 
 
 # ========== Gemini設定 ==========
-# Gemini設定
 GEMINI_AVAILABLE = False
 gemini_model = None
 
@@ -23,7 +24,6 @@ try:
     GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
     if GEMINI_API_KEY:
         genai.configure(api_key=GEMINI_API_KEY)
-        # 有料プラン対応モデル
         gemini_model = genai.GenerativeModel('models/gemini-2.5-pro')
         GEMINI_AVAILABLE = True
         print(f"【Gemini】有効化されました (APIキー長: {len(GEMINI_API_KEY)})")
@@ -41,13 +41,12 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'default_secret_key_for_production')
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
-# アプリケーションの設定
 app.config.update(
-    SESSION_COOKIE_SECURE=True,  # HTTPSなのでTrue
+    SESSION_COOKIE_SECURE=True,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
     PERMANENT_SESSION_LIFETIME=1800,
-    SESSION_COOKIE_PERMANENT=False,  # ブラウザを閉じたらCookie削除
+    SESSION_COOKIE_PERMANENT=False,
 )
 
 # ========== データベース接続関数 ==========
@@ -61,65 +60,9 @@ def get_db():
 def hash_password(password):
     return hashlib.sha256((password or "").encode('utf-8')).hexdigest()
 
-def init_db():
-    conn = None
-    try:
-        conn = get_db()
-        with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id TEXT PRIMARY KEY, 
-                    name TEXT, 
-                    class_id TEXT, 
-                    password TEXT, 
-                    role TEXT
-                )
-            """)
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS tests (
-                    id SERIAL PRIMARY KEY, 
-                    name TEXT, 
-                    target_class TEXT, 
-                    duration INTEGER DEFAULT 30
-                )
-            """)
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS questions (
-                    id SERIAL PRIMARY KEY, 
-                    test_id INTEGER, 
-                    q_no INTEGER, 
-                    category TEXT, 
-                    question TEXT, 
-                    target TEXT,
-                    a1 TEXT, a2 TEXT, a3 TEXT, a4 TEXT, a5 TEXT, 
-                    a6 TEXT, a7 TEXT, a8 TEXT, a9 TEXT, a10 TEXT, 
-                    answer TEXT, 
-                    explanation TEXT
-                )
-            """)
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS results (
-                    id SERIAL PRIMARY KEY, 
-                    test_id INTEGER, 
-                    user_id TEXT, 
-                    score INTEGER, 
-                    details TEXT, 
-                    comment TEXT, 
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            conn.commit()
-            print("【初期化】すべてのテーブルの確認・作成が完了しました")
-    except Exception as e:
-        print(f"【エラー】初期化中にエラーが発生しました: {e}")
-        raise
-    finally:
-        if conn:
-            conn.close()
-
-# ========== コメント生成関数 ==========
+# ========== 高速化されたコメント生成関数 ==========
 def generate_ai_comment(score, details_data):
-    """フォールバック用の従来型コメント生成"""
+    """フォールバック用の従来型コメント生成（高速）"""
     labels = details_data.get('labels', [])
     scores = details_data.get('scores', [])
     
@@ -159,8 +102,11 @@ def generate_ai_comment(score, details_data):
     
     return comment
 
+# キャッシュ用の辞書
+_comment_cache = {}
+
 def generate_ai_comment_with_gemini(score, details_data, student_name, test_name):
-    """Geminiコメント生成（利用可能な場合のみ）"""
+    """Geminiコメント生成（タイムアウト・キャッシュ付き・高速化）"""
     
     if not GEMINI_AVAILABLE or not gemini_model:
         return generate_ai_comment(score, details_data)
@@ -171,44 +117,71 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
     if not labels or not scores:
         return generate_ai_comment(score, details_data)
     
+    # キャッシュキー
+    cache_key = f"{student_name}_{test_name}_{score}_{'_'.join(map(str, scores))}"
+    
+    # キャッシュチェック
+    if cache_key in _comment_cache:
+        print("【キャッシュ】コメントを再利用しました")
+        return _comment_cache[cache_key]
+    
     avg_score = sum(scores) / len(scores) if scores else 0
     max_category = labels[scores.index(max(scores))] if scores else "なし"
     min_category = labels[scores.index(min(scores))] if scores else "なし"
     
     category_results = "\n".join([f"- {labels[i]}: {scores[i]}%" for i in range(len(labels)) if i < len(scores)])
     
-    prompt = f"""
-あなたは経験豊富な教育カウンセラーです。以下の学生の試験結果を分析し、温かみのある励ましと具体的なアドバイスを日本語で提供してください。
+    # プロンプトを短縮（応答高速化）
+    prompt = f"""教育カウンセラーとして、学生の試験結果を分析してください。
 
-【学生情報】
-名前: {student_name}
-受験した試験: {test_name}
+学生: {student_name}
+試験: {test_name}
+得点: {score}点/100点
 
-【成績データ】
-総合得点: {score}点 / 100点
-カテゴリー別正解率:
+カテゴリー別:
 {category_results}
 
-【統計情報】
-平均正解率: {avg_score:.1f}%
-最も得意な分野: {max_category}
-最も苦手な分野: {min_category}
+得意: {max_category}
+苦手: {min_category}
 
-【出力形式】
-以下の4つのセクションに分けて回答してください：
-
-💡 **総合評価**
-⭐ **強み**
-📚 **改善ポイント**
-🎯 **次のステップ**
-"""
+簡潔に（150字以内）：
+💡総合評価:
+⭐強み:
+📚改善点:
+🎯次のステップ:"""
     
     try:
-        response = gemini_model.generate_content(prompt)
-        comment = response.text
-        # 先頭の空白や改行を削除
-        comment = comment.lstrip('\n\r ')
+        # タイムアウト5秒で実行
+        result = [None]
+        error = [None]
+        
+        def call_gemini():
+            try:
+                response = gemini_model.generate_content(prompt)
+                result[0] = response.text.lstrip('\n\r ')
+            except Exception as e:
+                error[0] = e
+        
+        thread = threading.Thread(target=call_gemini)
+        thread.start()
+        thread.join(timeout=5)
+        
+        if thread.is_alive():
+            print("【Geminiタイムアウト】フォールバック")
+            return generate_ai_comment(score, details_data)
+        
+        if error[0]:
+            raise error[0]
+        
+        comment = result[0] if result[0] else generate_ai_comment(score, details_data)
+        
+        # キャッシュに保存
+        _comment_cache[cache_key] = comment
+        if len(_comment_cache) > 100:
+            _comment_cache.clear()
+        
         return comment
+        
     except Exception as e:
         print(f"【Geminiエラー】: {e}")
         return generate_ai_comment(score, details_data)
@@ -219,44 +192,17 @@ def before_request():
     if request.path.startswith('/static'):
         return
     
-    # '/' を除外、APIルートを追加
-    public_paths = ['/login', '/logout', '/register', '/password_reset']
+    public_paths = ['/', '/login', '/logout', '/register', '/password_reset']
     if request.path in public_paths or request.path.startswith('/api/'):
         return
     
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
-     # 悪意のあるパスをブロック
-    malicious_paths = [
-        'wp-admin', 'wp-includes', 'wp-content', 'xmlrpc.php',
-        'wlwmanifest.xml', 'install.php', 'wordpress', 'wp-json'
-    ]
-    
-    for path in malicious_paths:
-        if path in request.path.lower():
-            # 攻撃者にサイトが存在しないことを伝える
-            return "Not Found", 404
-    
-    # 静的ファイルはスキップ
-    if request.path.startswith('/static'):
-        return
-    
-    # 認証不要なパス
-    public_paths = ['/', '/login', '/logout', '/register', '/password_reset']
-    if request.path in public_paths:
-        return
-    
-    # セッションがない場合はログイン画面へ
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
-    if session.get('current_test_id') and session.permanent:
-        session.modified = True   
 # ========== ルーティング ==========
 @app.route('/')
 def index():
-    session.clear()  # 常にセッションクリア
+    session.clear()
     return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -349,7 +295,6 @@ def password_reset():
             cur.execute('UPDATE users SET password = %s WHERE id = %s', (hashed_pwd, u_id))
             
             if cur.rowcount == 0:
-                # IDが見つからない場合
                 cur.close()
                 conn.close()
                 return jsonify({
@@ -394,10 +339,6 @@ def teacher_admin():
                 ''', (t_name, t_class, t_duration))
                 new_test_id = cur.fetchone()[0]
                 
-                cur.execute("SELECT COALESCE(MAX(id), 0) FROM questions")
-                max_q_id = cur.fetchone()[0]
-                next_q_id = max_q_id + 1
-                
                 file_content = file.read()
                 
                 try:
@@ -412,14 +353,12 @@ def teacher_admin():
                 reader = csv.DictReader(stream)
                 
                 def find_column(reader, patterns):
-                    # 完全一致を優先
                     for pattern in patterns:
                         for col in reader.fieldnames:
                             if col is None:
                                 continue
                             if pattern.lower() == col.lower():
                                 return col
-                    # 部分一致は後回し
                     for pattern in patterns:
                         for col in reader.fieldnames:
                             if col is None:
@@ -441,21 +380,18 @@ def teacher_admin():
                     choice_columns.append(found)
                                 
                 inserted_count = 0
-                skipped_count = 0
                 
                 for row in reader:
                     q_no_raw = ''
                     if q_no_col:
                         q_no_raw = row.get(q_no_col, '').strip()
                     
-                    if not q_no_raw or q_no_raw == 'end' or q_no_raw == '序号':
-                        skipped_count += 1
+                    if not q_no_raw or q_no_raw == 'end':
                         continue
                     
                     try:
                         q_no_int = int(float(q_no_raw))
                     except (ValueError, TypeError):
-                        skipped_count += 1
                         continue
                     
                     a1 = row.get(choice_columns[0], '').strip() if choice_columns[0] else ''
@@ -478,35 +414,31 @@ def teacher_admin():
                     def null_to_empty(val):
                         return val if val is not None else ''
                     
-                    values = (
-                        new_test_id, q_no_int,
-                        null_to_empty(category), null_to_empty(question), null_to_empty(target),
-                        null_to_empty(a1), null_to_empty(a2), null_to_empty(a3), null_to_empty(a4), null_to_empty(a5),
-                        null_to_empty(a6), null_to_empty(a7), null_to_empty(a8), null_to_empty(a9), null_to_empty(a10),
-                        null_to_empty(answer_val), null_to_empty(explanation)
-                    )
-
                     cur.execute('''
                         INSERT INTO questions (
                             test_id, q_no, category, question, target, 
                             a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, 
                             answer, explanation
                         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ''', values)
+                    ''', (
+                        new_test_id, q_no_int,
+                        null_to_empty(category), null_to_empty(question), null_to_empty(target),
+                        null_to_empty(a1), null_to_empty(a2), null_to_empty(a3), null_to_empty(a4), null_to_empty(a5),
+                        null_to_empty(a6), null_to_empty(a7), null_to_empty(a8), null_to_empty(a9), null_to_empty(a10),
+                        null_to_empty(answer_val), null_to_empty(explanation)
+                    ))
                     inserted_count += 1
                 
                 conn.commit()
                 cur.close()
                 conn.close()
-                flash(f'「{t_name}」を正常に登録しました。（{inserted_count}問登録 ）')
+                flash(f'「{t_name}」を正常に登録しました。（{inserted_count}問登録）')
                 
             except Exception as e:
                 if conn:
                     conn.rollback()
                     conn.close()
                 flash(f'CSV登録エラー: {str(e)}')
-             #   import traceback 削除対象
-             #   traceback.print_exc()
         
         return redirect(url_for('teacher_admin'))
 
@@ -615,7 +547,6 @@ def submit_test(test_id):
         conn = get_db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # 問題を取得（q_no順）
         cur.execute("SELECT id, q_no, category, answer FROM questions WHERE test_id = %s ORDER BY q_no", (test_id,))
         questions = cur.fetchall()
         
@@ -631,16 +562,13 @@ def submit_test(test_id):
                 genre_stats[category] = {'correct': 0, 'total': 0}
             genre_stats[category]['total'] += 1
             
-            # ユーザーの回答を取得（キーは問題番号）
             user_answer = user_answers.get(q_no, '')
             correct_answer = str(q['answer']) if q['answer'] else ''
             
-            # 回答が一致したら正解
             if user_answer and user_answer == correct_answer:
                 correct_count += 1
                 genre_stats[category]['correct'] += 1
         
-        # 分析データ作成
         labels = list(genre_stats.keys())
         scores = []
         for g in labels:
@@ -650,18 +578,9 @@ def submit_test(test_id):
                 score = 0
             scores.append(score)
         
-        analysis = {
-            "labels": labels,
-            "scores": scores
-        }
-        
+        analysis = {"labels": labels, "scores": scores}
         final_score = int((correct_count / total_q) * 100) if total_q > 0 else 0
         
-        #print(f"【デバッグ】正解数: {correct_count}/{total_q}")
-        #print(f"【デバッグ】最終スコア: {final_score}")
-        #print(f"【デバッグ】分析結果: {analysis}")
-        
-        # 結果を保存
         cur.execute('''
             INSERT INTO results (user_id, test_id, score, details, timestamp) 
             VALUES (%s, %s, %s, %s, NOW()) RETURNING id
@@ -688,7 +607,6 @@ def submit_test(test_id):
         traceback.print_exc()
         flash("採点処理中にエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
-
 
 @app.route('/student/test/<int:test_id>/result/<int:result_id>')
 def show_result(test_id, result_id):
@@ -729,7 +647,7 @@ def show_result(test_id, result_id):
             test_name=test_name
         )
         
-        res = dict(res)  # RealDictRowを通常のdictに変換
+        res = dict(res)
         res['comment'] = ai_comment
         
         return render_template('result_page.html', res=res, details=details_data)
@@ -767,13 +685,10 @@ def api_get_question(test_id, q_no):
         data = request.get_json() or {}
         ans_dict = session['answers']
         if data.get('skip'):
-            ans_dict[str(q_no)] = ""  # キーは文字列のq_no
-            #print(f"【APIデバッグ】スキップ: q_no={q_no}")
+            ans_dict[str(q_no)] = ""
         else:
             ans_dict[str(q_no)] = str(data.get('choice', ''))
-            #print(f"【APIデバッグ】回答保存: q_no={q_no}, choice={data.get('choice', '')}")
         session['answers'] = ans_dict
-        #print(f"【APIデバッグ】現在の回答状況: {session['answers']}")
 
     cur.execute('SELECT * FROM questions WHERE test_id = %s AND q_no = %s', (test_id, q_no))
     q = cur.fetchone()
@@ -819,14 +734,13 @@ def check_test_session(test_id):
         return jsonify({'valid': False, 'redirect': url_for('login')})
     return jsonify({'valid': True})
 
-# ========== 志望動機作成機能（留学生・やさしい日本語版） ==========
+# ========== 志望動機作成機能 ==========
 
 @app.route('/motivation_form')
 def motivation_form():
     if session.get('role') != 'student':
         return redirect(url_for('login'))
     return render_template('motivation_form.html')
-
 
 def parse_ai_response(response_text):
     """AIの応答をパースして各セクションを抽出"""
@@ -861,30 +775,16 @@ def parse_ai_response(response_text):
         'self_pr': self_pr
     }
 
-
 def get_sample_easy_motivation():
     """Geminiがない場合のサンプル文章"""
     return {
-        'motivation': """私が御社を志望する理由は、○○という事業に魅力を感じたからです。
-私は△△で培った経験を活かし、御社の△△として貢献したいと考えています。
-アルバイトでは、チームの一員として目標達成に貢献しました。
-この経験から、協力することの大切さを学びました。
-貴社で働くことで、さらに成長し、社会に貢献できる人材になりたいです。""",
-        
-        'hobby': """私の趣味は○○です。
-この趣味を通じて、継続する力や新しいことに挑戦する勇気を学びました。
-これらの経験は、仕事でも必ず活きると考えています。""",
-        
-        'self_pr': """私の強みは○○です。
-例えば、アルバイトでは△△という成果を上げました。
-また、課題があった場合は、積極的に改善案を提案するよう心がけています。
-これからも向上心を持って、仕事に取り組みたいと思います。"""
+        'motivation': """私が御社を志望する理由は、○○という事業に魅力を感じたからです。\n私は△△で培った経験を活かし、御社の△△として貢献したいと考えています。\nアルバイトでは、チームの一員として目標達成に貢献しました。\nこの経験から、協力することの大切さを学びました。\n貴社で働くことで、さらに成長し、社会に貢献できる人材になりたいです。""",
+        'hobby': """私の趣味は○○です。\nこの趣味を通じて、継続する力や新しいことに挑戦する勇気を学びました。\nこれらの経験は、仕事でも必ず活きると考えています。""",
+        'self_pr': """私の強みは○○です。\n例えば、アルバイトでは△△という成果を上げました。\nまた、課題があった場合は、積極的に改善案を提案するよう心がけています。\nこれからも向上心を持って、仕事に取り組みたいと思います。"""
     }
-
 
 def create_easy_japanese_prompt(data):
     """やさしい日本語用のプロンプトを作成"""
-    
     university_status_text = {
         'none': '行っていない',
         'dropout': '中退した',
@@ -898,7 +798,7 @@ def create_easy_japanese_prompt(data):
     else:
         other_job_text = "なし"
     
-    prompt = f"""
+    return f"""
 あなたは専門学校の学生が就職活動で使う「志望動機」「趣味・特技」「自己PR」を書くプロのライターです。
 以下の学生の情報をもとに、**品格があり、説得力のある文章**を書いてください。
 
@@ -938,44 +838,20 @@ def create_easy_japanese_prompt(data):
 - 将来の夢: {data.get('career_plan', '')}
 - アピールしたいこと: {data.get('appeal_points', '')}
 
-【文章のルール】
-1. 基本的な日本語の漢字は使用して構いません
-2. 難しい言い回しは避ける
-3. 1文は短く、明確に
-4. 「です・ます」調で統一する
-5. 具体的な数字やエピソードを入れる
-
-【出力の長さ】
-- 志望動機: 220〜270字
-- 趣味・特技: 100〜130字
-- 自己PR: 240〜290字
-
 【出力形式】
-【志望動機】
-（本文）
-
-【趣味・特技】
-（本文）
-
-【自己PR】
-（本文）
+【志望動機】（本文）
+【趣味・特技】（本文）
+【自己PR】（本文）
 """
-    return prompt
-
 
 @app.route('/api/generate_motivation', methods=['POST'])
 def generate_motivation():
     """AIで志望動機・趣味特技・自己PRを生成"""
-    # デバッグログを追加
-    print("【デバッグ】generate_motivation が呼び出されました")
-    
     if session.get('role') != 'student':
-        print("【デバッグ】認証エラー: ロールがstudentではありません")
         return jsonify({'error': 'Unauthorized'}), 401
     
     try:
         data = request.get_json()
-        print(f"【デバッグ】受け取ったデータ: {data}")
         
         required_fields = [
             'company_name', 'desired_position', 'high_school_efforts',
@@ -986,25 +862,19 @@ def generate_motivation():
         
         missing_fields = [f for f in required_fields if not data.get(f)]
         if missing_fields:
-            print(f"【デバッグ】必須項目不足: {missing_fields}")
             return jsonify({'error': f'必須項目が不足しています: {missing_fields}'}), 400
         
         prompt = create_easy_japanese_prompt(data)
-        print(f"【デバッグ】プロンプト作成完了（長さ: {len(prompt)}文字）")
         
         if GEMINI_AVAILABLE and gemini_model:
             try:
-                print("【デバッグ】Gemini APIを呼び出し中...")
                 response = gemini_model.generate_content(prompt)
-                print(f"【デバッグ】Gemini応答受信（長さ: {len(response.text)}文字）")
                 result = parse_ai_response(response.text)
-                print(f"【デバッグ】パース結果: motivation={len(result['motivation'])}文字, hobby={len(result['hobby'])}文字, self_pr={len(result['self_pr'])}文字")
                 return jsonify(result)
             except Exception as e:
                 print(f"【Geminiエラー】: {e}")
                 return jsonify(get_sample_easy_motivation()), 200
         else:
-            print("【デバッグ】Gemini未使用のためサンプルを返します")
             return jsonify(get_sample_easy_motivation()), 200
             
     except Exception as e:
@@ -1012,86 +882,6 @@ def generate_motivation():
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
-
-
-
-
-
-
-@app.route('/api/generate_motivation', methods=['POST'])
-def generate_motivation():
-    """AIで志望動機・趣味特技・自己PRを生成"""
-    if session.get('role') != 'student':
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    data = request.get_json()
-    
-    required_fields = [
-        'company_name', 'desired_position', 'high_school_efforts',
-        'current_part_time', 'part_time_description', 'has_leader_exp',
-        'part_time_achievement', 'languages', 'certifications',
-        'strengths', 'how_overcome', 'hobbies', 'career_plan'
-    ]
-    
-    missing_fields = [f for f in required_fields if not data.get(f)]
-    if missing_fields:
-        return jsonify({'error': f'必須項目が不足しています: {missing_fields}'}), 400
-    
-    prompt = create_easy_japanese_prompt(data)
-    
-    if GEMINI_AVAILABLE and gemini_model:
-        try:
-            response = gemini_model.generate_content(prompt)
-            result = parse_ai_response(response.text)
-            return jsonify(result)
-        except Exception as e:
-            print(f"【Geminiエラー】: {e}")
-            return jsonify(get_sample_easy_motivation()), 200
-    else:
-        return jsonify(get_sample_easy_motivation()), 200
-
-
-def parse_ai_response(text):
-    """AIのレスポンスをパース"""
-    result = {
-        'motivation': '',
-        'hobby': '',
-        'self_pr': ''
-    }
-    
-    # 「【志望動機】」で分割
-    if '【志望動機】' in text:
-        parts = text.split('【志望動機】')
-        if len(parts) > 1:
-            after = parts[1]
-            if '【趣味・特技】' in after:
-                motivation, rest = after.split('【趣味・特技】', 1)
-                result['motivation'] = motivation.strip()
-                if '【自己PR】' in rest:
-                    hobby, self_pr = rest.split('【自己PR】', 1)
-                    result['hobby'] = hobby.strip()
-                    result['self_pr'] = self_pr.strip()
-                else:
-                    result['hobby'] = rest.strip()
-            else:
-                result['motivation'] = after.strip()
-    elif '【志望理由】' in text:
-        # 代替フォーマット
-        parts = text.split('【志望理由】')
-        if len(parts) > 1:
-            after = parts[1]
-            if '【自己PR】' in after:
-                motivation, rest = after.split('【自己PR】', 1)
-                result['motivation'] = motivation.strip()
-                result['self_pr'] = rest.strip()
-            else:
-                result['motivation'] = after.strip()
-    else:
-        # パースに失敗したら全文を志望動機に
-        result['motivation'] = text.strip()
-    
-    return result
-
 
 # ========== サーバー起動 ==========
 if __name__ == '__main__':
