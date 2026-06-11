@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.2.4
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.3.0
 
 # -*- coding: utf-8 -*-
 import os
@@ -9,8 +9,7 @@ import hashlib
 import re
 import psycopg2
 import threading
-from functools import lru_cache
-
+from collections import OrderedDict
 from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 
@@ -60,6 +59,18 @@ def get_db():
 def hash_password(password):
     return hashlib.sha256((password or "").encode('utf-8')).hexdigest()
 
+def update_user_password(user_id, new_password):
+    """パスワード更新の共通関数"""
+    hashed_pwd = hash_password(new_password)
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('UPDATE users SET password = %s WHERE id = %s', (hashed_pwd, user_id))
+    updated = cur.rowcount > 0
+    conn.commit()
+    cur.close()
+    conn.close()
+    return updated
+
 # ========== 高速化されたコメント生成関数 ==========
 def generate_ai_comment(score, details_data):
     """フォールバック用の従来型コメント生成（高速）"""
@@ -102,8 +113,29 @@ def generate_ai_comment(score, details_data):
     
     return comment
 
-# キャッシュ用の辞書
-_comment_cache = {}
+# キャッシュ用のLRU辞書（最大100件）
+class LRUCache:
+    def __init__(self, maxsize=100):
+        self.cache = OrderedDict()
+        self.maxsize = maxsize
+    
+    def get(self, key):
+        if key in self.cache:
+            self.cache.move_to_end(key)
+            return self.cache[key]
+        return None
+    
+    def set(self, key, value):
+        if key in self.cache:
+            self.cache.move_to_end(key)
+        self.cache[key] = value
+        if len(self.cache) > self.maxsize:
+            self.cache.popitem(last=False)
+    
+    def clear(self):
+        self.cache.clear()
+
+_comment_cache = LRUCache(maxsize=100)
 
 def generate_ai_comment_with_gemini(score, details_data, student_name, test_name):
     """Geminiコメント生成（タイムアウト・キャッシュ付き・高速化）"""
@@ -121,9 +153,10 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
     cache_key = f"{student_name}_{test_name}_{score}_{'_'.join(map(str, scores))}"
     
     # キャッシュチェック
-    if cache_key in _comment_cache:
+    cached = _comment_cache.get(cache_key)
+    if cached:
         print("【キャッシュ】コメントを再利用しました")
-        return _comment_cache[cache_key]
+        return cached
     
     avg_score = sum(scores) / len(scores) if scores else 0
     max_category = labels[scores.index(max(scores))] if scores else "なし"
@@ -131,7 +164,6 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
     
     category_results = "\n".join([f"- {labels[i]}: {scores[i]}%" for i in range(len(labels)) if i < len(scores)])
     
-    # プロンプトを短縮（応答高速化）
     prompt = f"""教育カウンセラーとして、学生の試験結果を分析してください。
 
 学生: {student_name}
@@ -151,7 +183,6 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
 🎯次のステップ:"""
     
     try:
-        # タイムアウト5秒で実行
         result = [None]
         error = [None]
         
@@ -164,7 +195,7 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
         
         thread = threading.Thread(target=call_gemini)
         thread.start()
-        thread.join(timeout=5)
+        thread.join(timeout=10)  # 10秒に延長
         
         if thread.is_alive():
             print("【Geminiタイムアウト】フォールバック")
@@ -176,9 +207,7 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
         comment = result[0] if result[0] else generate_ai_comment(score, details_data)
         
         # キャッシュに保存
-        _comment_cache[cache_key] = comment
-        if len(_comment_cache) > 100:
-            _comment_cache.clear()
+        _comment_cache.set(cache_key, comment)
         
         return comment
         
@@ -193,7 +222,7 @@ def before_request():
         return
     
     public_paths = ['/', '/login', '/logout', '/register', '/password_reset']
-    if request.path in public_paths or request.path.startswith('/api/'):
+    if request.path in public_paths:
         return
     
     if 'user_id' not in session:
@@ -251,7 +280,7 @@ def logout():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        u_id = request.form.get('id', '')
+        u_id = request.form.get('id', '').strip()
         pwd = request.form.get('password', '')
 
         if not u_id or not pwd:
@@ -262,20 +291,11 @@ def register():
             flash("入力内容が長すぎます。")
             return render_template('register.html')
 
-        hashed_pwd = hash_password(pwd)
-        try:
-            conn = get_db()
-            cur = conn.cursor()
-            cur.execute('UPDATE users SET password = %s WHERE id = %s', (hashed_pwd, u_id))
-            if cur.rowcount == 0:
-                flash("IDが見つかりません。")
-            else:
-                conn.commit()
-                flash("登録が完了しました。")
-            cur.close()
-            conn.close()
-        except Exception as e:
-            flash("システムエラーが発生しました。")
+        if update_user_password(u_id, pwd):
+            flash("登録が完了しました。")
+        else:
+            flash("IDが見つかりません。")
+            
     return render_template('register.html')
 
 @app.route('/password_reset', methods=['GET', 'POST'])
@@ -287,32 +307,17 @@ def password_reset():
         if not u_id or not pwd:
             return jsonify({'success': False, 'message': 'IDとパスワードを入力してください。'})
         
-        hashed_pwd = hash_password(pwd)
-        
-        try:
-            conn = get_db()
-            cur = conn.cursor()
-            cur.execute('UPDATE users SET password = %s WHERE id = %s', (hashed_pwd, u_id))
-            
-            if cur.rowcount == 0:
-                cur.close()
-                conn.close()
-                return jsonify({
-                    'success': False, 
-                    'not_found': True,
-                    'message': '入力されたIDは登録されていません。'
-                })
-            else:
-                conn.commit()
-                cur.close()
-                conn.close()
-                return jsonify({
-                    'success': True, 
-                    'message': 'パスワードを再設定しました。ログインしてください。'
-                })
-        except Exception as e:
-            print(f"パスワードリセットエラー: {e}")
-            return jsonify({'success': False, 'message': 'システムエラーが発生しました。'})
+        if update_user_password(u_id, pwd):
+            return jsonify({
+                'success': True, 
+                'message': 'パスワードを再設定しました。ログインしてください。'
+            })
+        else:
+            return jsonify({
+                'success': False, 
+                'not_found': True,
+                'message': '入力されたIDは登録されていません。'
+            })
     
     return render_template('password_reset.html')
 
@@ -551,6 +556,10 @@ def submit_test(test_id):
         questions = cur.fetchall()
         
         total_q = len(questions)
+        if total_q == 0:
+            flash("問題が見つかりません。")
+            return redirect(url_for('student_dashboard'))
+        
         correct_count = 0
         genre_stats = {}
         
@@ -579,7 +588,7 @@ def submit_test(test_id):
             scores.append(score)
         
         analysis = {"labels": labels, "scores": scores}
-        final_score = int((correct_count / total_q) * 100) if total_q > 0 else 0
+        final_score = int((correct_count / total_q) * 100)
         
         cur.execute('''
             INSERT INTO results (user_id, test_id, score, details, timestamp) 
@@ -608,8 +617,48 @@ def submit_test(test_id):
         flash("採点処理中にエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
 
+# ========== 非同期AIコメント用 ==========
+@app.route('/api/result/<int:result_id>/ai_comment', methods=['GET'])
+def api_get_ai_comment(result_id):
+    """AIコメントだけを非同期で返すAPI"""
+    if session.get('role') != 'student':
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    conn = None
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute('''
+            SELECT r.*, u.name as student_name, t.name as test_name
+            FROM results r
+            JOIN users u ON r.user_id = u.id
+            JOIN tests t ON r.test_id = t.id
+            WHERE r.id = %s AND r.user_id = %s
+        ''', (result_id, session.get('user_id')))
+        res = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if not res:
+            return jsonify({'error': 'Not found'}), 404
+        
+        details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
+        
+        comment = generate_ai_comment_with_gemini(
+            score=res['score'],
+            details_data=details_data,
+            student_name=res['student_name'],
+            test_name=res['test_name']
+        )
+        return jsonify({'comment': comment})
+        
+    except Exception as e:
+        print(f"AI comment error: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/student/test/<int:test_id>/result/<int:result_id>')
 def show_result(test_id, result_id):
+    """結果ページ表示（AIコメントは非同期で取得）"""
     if session.get('role') != 'student':
         return redirect(url_for('login'))
     
@@ -638,20 +687,20 @@ def show_result(test_id, result_id):
             flash("結果が見つかりません。")
             return redirect(url_for('student_dashboard'))
 
-        details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
+        # 安全なJSONパース
+        try:
+            details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
+        except json.JSONDecodeError:
+            details_data = {'labels': [], 'scores': []}
         
-        ai_comment = generate_ai_comment_with_gemini(
-            score=res['score'],
-            details_data=details_data,
-            student_name=res['student_name'],
+        # AIコメントは呼ばない → テンプレートに result_id だけ渡す
+        return render_template('result_page.html',
+            res=dict(res),
+            details=details_data,
+            result_id=result_id,
             test_name=test_name
         )
         
-        res = dict(res)
-        res['comment'] = ai_comment
-        
-        return render_template('result_page.html', res=res, details=details_data)
-
     except Exception as e:
         if conn:
             conn.close()
@@ -663,10 +712,18 @@ def show_result(test_id, result_id):
 
 @app.route('/student/test/<int:test_id>/cheated', methods=['POST'])
 def cheated_test(test_id):
+    if session.get('role') != 'student':
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    if not session.get('user_id'):
+        return jsonify({'error': 'Not logged in'}), 401
+    
     conn = get_db()
     cur = conn.cursor()
-    cur.execute('INSERT INTO results (test_id, user_id, score, comment) VALUES (%s, %s, %s, %s)',
-                (test_id, session.get('user_id'), 0, "失格"))
+    cur.execute('''
+        INSERT INTO results (test_id, user_id, score, details, timestamp) 
+        VALUES (%s, %s, %s, %s, NOW())
+    ''', (test_id, session.get('user_id'), 0, json.dumps({"labels": [], "scores": []})))
     conn.commit()
     cur.close()
     conn.close()
@@ -850,38 +907,58 @@ def generate_motivation():
     if session.get('role') != 'student':
         return jsonify({'error': 'Unauthorized'}), 401
     
-    try:
-        data = request.get_json()
-        
-        required_fields = [
-            'company_name', 'desired_position', 'high_school_efforts',
-            'current_part_time', 'part_time_description', 'has_leader_exp',
-            'part_time_achievement', 'languages', 'certifications',
-            'strengths', 'how_overcome', 'hobbies', 'career_plan'
-        ]
-        
-        missing_fields = [f for f in required_fields if not data.get(f)]
-        if missing_fields:
-            return jsonify({'error': f'必須項目が不足しています: {missing_fields}'}), 400
-        
-        prompt = create_easy_japanese_prompt(data)
-        
-        if GEMINI_AVAILABLE and gemini_model:
-            try:
-                response = gemini_model.generate_content(prompt)
-                result = parse_ai_response(response.text)
-                return jsonify(result)
-            except Exception as e:
-                print(f"【Geminiエラー】: {e}")
-                return jsonify(get_sample_easy_motivation()), 200
-        else:
-            return jsonify(get_sample_easy_motivation()), 200
+    data = request.get_json()
+    if data is None:
+        return jsonify({'error': 'Invalid JSON'}), 400
+    
+    required_fields = [
+        'company_name', 'desired_position', 'high_school_efforts',
+        'current_part_time', 'part_time_description', 'has_leader_exp',
+        'part_time_achievement', 'languages', 'certifications',
+        'strengths', 'how_overcome', 'hobbies', 'career_plan'
+    ]
+    
+    missing_fields = [f for f in required_fields if not data.get(f)]
+    if missing_fields:
+        return jsonify({'error': f'必須項目が不足しています: {missing_fields}'}), 400
+    
+    prompt = create_easy_japanese_prompt(data)
+    
+    if GEMINI_AVAILABLE and gemini_model:
+        try:
+            # タイムアウト15秒で実行
+            result = [None]
+            error = [None]
             
-    except Exception as e:
-        print(f"【エラー】generate_motivation: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+            def call_gemini():
+                try:
+                    response = gemini_model.generate_content(prompt)
+                    result[0] = response.text
+                except Exception as e:
+                    error[0] = e
+            
+            thread = threading.Thread(target=call_gemini)
+            thread.start()
+            thread.join(timeout=15)  # 15秒タイムアウト
+            
+            if thread.is_alive():
+                print("【Geminiタイムアウト】志望動機生成")
+                return jsonify(get_sample_easy_motivation()), 200
+            
+            if error[0]:
+                raise error[0]
+            
+            if result[0]:
+                parsed = parse_ai_response(result[0])
+                return jsonify(parsed)
+            else:
+                return jsonify(get_sample_easy_motivation()), 200
+                
+        except Exception as e:
+            print(f"【Geminiエラー】: {e}")
+            return jsonify(get_sample_easy_motivation()), 200
+    else:
+        return jsonify(get_sample_easy_motivation()), 200
 
 # ========== サーバー起動 ==========
 if __name__ == '__main__':

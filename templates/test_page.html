@@ -46,19 +46,9 @@
                 </div>
 
                 <div class="flex-grow-1 overflow-auto px-1">
-                    <!-- 元のコード（すぐに戻せるようにコメントアウト） -->
-                    <!-- <div class="row row-cols-1 row-cols-md-2 g-2" id="choices-container"> -->
-                    <!-- </div> -->
-                    
-                    <!-- 推奨コード：下部に隙間を追加（mb-3） -->
                     <div class="row row-cols-1 row-cols-md-2 g-2 mb-3" id="choices-container">
                     </div>
-                    
-                    <!-- さらに隙間を広げたい場合（mb-4） -->
-                    <!-- <div class="row row-cols-1 row-cols-md-2 g-2 mb-4" id="choices-container"> -->
-                    <!-- </div> -->
                 </div>
-   
 
                 <div class="d-flex justify-content-between border-top pt-3 mt-2 flex-shrink-0">
                     <button type="button" onclick="submitAnswer(true)" class="btn btn-outline-warning fw-bold px-4">
@@ -85,7 +75,7 @@
                 </div>
                 <div class="card-body p-2" style="max-height: 85px; overflow-y: auto; background-color: #fbfbfb;">
                     <div class="d-flex flex-wrap gap-1" id="nav-buttons-container">
-                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -203,14 +193,6 @@
         window.location.href = `/student/test/${testId}/submit`;
     }
     
-    function finalSubmit() {
-        fullscreenExitAllowed = true;
-        if (fullscreenCheckInterval) clearInterval(fullscreenCheckInterval);
-        localStorage.removeItem("exam_end_time_id_" + testId);
-        sessionStorage.removeItem("fullscreen_active");
-        window.location.href = `/student/test/${testId}/submit`;
-    }
-
     function forceSubmit() {
         if (isSubmitting) return;
         isSubmitting = true;
@@ -238,6 +220,13 @@
         } else {
             isSubmitting = false;
         }
+    }
+    
+    // 最終提出関数
+    function finalSubmit() {
+        showLoading();
+        localStorage.removeItem("exam_end_time_id_" + testId);
+        window.location.href = `/student/test/${testId}/submit`;
     }
     
     let timerInterval = setInterval(updateTimer, 1000);
@@ -322,7 +311,6 @@
         if (nextBtn) nextBtn.disabled = true;
         if (skipBtn) skipBtn.disabled = true;
 
-        // 最後の問題の場合はローディング表示
         if (currentQNo >= totalQuestions) {
             showLoading();
         }
