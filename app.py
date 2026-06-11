@@ -258,9 +258,6 @@ def before_request():
 def index():
     session.clear()  # 常にセッションクリア
     return redirect(url_for('login'))
-    if session.get('role') == 'teacher':
-        return redirect(url_for('teacher_admin'))
-    return redirect(url_for('student_dashboard'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
