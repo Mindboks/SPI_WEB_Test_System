@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.2.0
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.2.1
 
 # -*- coding: utf-8 -*-
 import os
@@ -883,7 +883,7 @@ def get_sample_easy_motivation():
 
 
 def create_easy_japanese_prompt(data):
-    """やさしい日本語用のプロンプトを作成（専門学生らしい品格ある表現版）"""
+    """やさしい日本語用のプロンプトを作成"""
     
     university_status_text = {
         'none': '行っていない',
@@ -961,6 +961,61 @@ def create_easy_japanese_prompt(data):
 （本文）
 """
     return prompt
+
+
+@app.route('/api/generate_motivation', methods=['POST'])
+def generate_motivation():
+    """AIで志望動機・趣味特技・自己PRを生成"""
+    # デバッグログを追加
+    print("【デバッグ】generate_motivation が呼び出されました")
+    
+    if session.get('role') != 'student':
+        print("【デバッグ】認証エラー: ロールがstudentではありません")
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    try:
+        data = request.get_json()
+        print(f"【デバッグ】受け取ったデータ: {data}")
+        
+        required_fields = [
+            'company_name', 'desired_position', 'high_school_efforts',
+            'current_part_time', 'part_time_description', 'has_leader_exp',
+            'part_time_achievement', 'languages', 'certifications',
+            'strengths', 'how_overcome', 'hobbies', 'career_plan'
+        ]
+        
+        missing_fields = [f for f in required_fields if not data.get(f)]
+        if missing_fields:
+            print(f"【デバッグ】必須項目不足: {missing_fields}")
+            return jsonify({'error': f'必須項目が不足しています: {missing_fields}'}), 400
+        
+        prompt = create_easy_japanese_prompt(data)
+        print(f"【デバッグ】プロンプト作成完了（長さ: {len(prompt)}文字）")
+        
+        if GEMINI_AVAILABLE and gemini_model:
+            try:
+                print("【デバッグ】Gemini APIを呼び出し中...")
+                response = gemini_model.generate_content(prompt)
+                print(f"【デバッグ】Gemini応答受信（長さ: {len(response.text)}文字）")
+                result = parse_ai_response(response.text)
+                print(f"【デバッグ】パース結果: motivation={len(result['motivation'])}文字, hobby={len(result['hobby'])}文字, self_pr={len(result['self_pr'])}文字")
+                return jsonify(result)
+            except Exception as e:
+                print(f"【Geminiエラー】: {e}")
+                return jsonify(get_sample_easy_motivation()), 200
+        else:
+            print("【デバッグ】Gemini未使用のためサンプルを返します")
+            return jsonify(get_sample_easy_motivation()), 200
+            
+    except Exception as e:
+        print(f"【エラー】generate_motivation: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+
+
 
 
 @app.route('/api/generate_motivation', methods=['POST'])
