@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.1.6
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.1.7
 
 # -*- coding: utf-8 -*-
 import os
@@ -831,56 +831,71 @@ def motivation_form():
     return render_template('motivation_form.html')
 
 
-@app.route('/api/generate_motivation', methods=['POST'])
-def generate_motivation():
-    """AIで志望動機・趣味特技・自己PRを生成（やさしい日本語）"""
-    if session.get('role') != 'student':
-        return jsonify({'error': 'Unauthorized'}), 401
+def parse_ai_response(response_text):
+    """AIの応答をパースして各セクションを抽出"""
+    import re
     
-    data = request.get_json()
+    def extract_section(text, section_name):
+        patterns = [
+            rf'【{section_name}】\s*(.+?)(?=【|$)',
+            rf'{section_name}\s*[:：]\s*(.+?)(?=\n\n|\n【|$)',
+            rf'■{section_name}\s*(.+?)(?=■|$)'
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text, re.DOTALL)
+            if match:
+                return match.group(1).strip()
+        return ""
+
+    motivation = extract_section(response_text, "志望動機")
+    hobby = extract_section(response_text, "趣味・特技")
+    self_pr = extract_section(response_text, "自己PR")
     
-    # 必須項目のバリデーション
-    required_fields = [
-        'company_name', 'desired_position', 'high_school_efforts',
-        'current_part_time', 'part_time_description', 'has_leader_exp',
-        'part_time_achievement', 'languages', 'certifications',
-        'strengths', 'how_overcome', 'hobbies', 'career_plan'
-    ]
+    if not motivation:
+        motivation = response_text[:500] if len(response_text) > 500 else response_text
+    if not hobby:
+        hobby = "趣味は〇〇です。そこから△△を学びました。"
+    if not self_pr:
+        self_pr = "私の強みは○○です。これを活かして貢献します。"
     
-    missing_fields = [f for f in required_fields if not data.get(f)]
-    if missing_fields:
-        return jsonify({'error': f'必須項目が不足しています: {missing_fields}'}), 400
-    
-    # プロンプトを作成
-    prompt = create_easy_japanese_prompt(data)
-    
-    if GEMINI_AVAILABLE and gemini_model:
-        try:
-            response = gemini_model.generate_content(prompt)
-            result = parse_ai_response(response.text)
-            return jsonify(result)
-        except Exception as e:
-            print(f"【Geminiエラー】: {e}")
-            return jsonify(get_sample_easy_motivation()), 200
-    else:
-        # Geminiがない場合はサンプルを返す
-        return jsonify(get_sample_easy_motivation()), 200
+    return {
+        'motivation': motivation,
+        'hobby': hobby,
+        'self_pr': self_pr
+    }
+
+
+def get_sample_easy_motivation():
+    """Geminiがない場合のサンプル文章"""
+    return {
+        'motivation': """私が御社を志望する理由は、○○という事業に魅力を感じたからです。
+私は△△で培った経験を活かし、御社の△△として貢献したいと考えています。
+アルバイトでは、チームの一員として目標達成に貢献しました。
+この経験から、協力することの大切さを学びました。
+貴社で働くことで、さらに成長し、社会に貢献できる人材になりたいです。""",
+        
+        'hobby': """私の趣味は○○です。
+この趣味を通じて、継続する力や新しいことに挑戦する勇気を学びました。
+これらの経験は、仕事でも必ず活きると考えています。""",
+        
+        'self_pr': """私の強みは○○です。
+例えば、アルバイトでは△△という成果を上げました。
+また、課題があった場合は、積極的に改善案を提案するよう心がけています。
+これからも向上心を持って、仕事に取り組みたいと思います。"""
+    }
 
 
 def create_easy_japanese_prompt(data):
     """やさしい日本語用のプロンプトを作成（専門学生らしい品格ある表現版）"""
     
-    # 大学状況の変換
     university_status_text = {
         'none': '行っていない',
         'dropout': '中退した',
         'graduate': '卒業した'
     }.get(data.get('university_status', 'none'), '行っていない')
     
-    # リーダー経験の変換
     leader_exp_text = 'あり' if data.get('has_leader_exp') == 'yes' else 'なし'
     
-    # アルバイト以外の仕事の処理
     if data.get('other_job_exists') == 'yes':
         other_job_text = f"あり（会社名: {data.get('other_job_company', '')}）"
     else:
@@ -927,15 +942,11 @@ def create_easy_japanese_prompt(data):
 - アピールしたいこと: {data.get('appeal_points', '')}
 
 【文章のルール】
-1. 基本的な日本語の漢字は使用して構いません（例：私、学生、会社、将来、経験）
-2. ただし、以下のような難しい言い回しは避けてください：
-   - 〜させていただく → 使わない
-   - 〜という認識でおります → 「〜だと思います」
-   - 〜に対するアプローチ → 「〜への取り組み」
-3. 1文は短く、明確に（体言止めは避ける）
+1. 基本的な日本語の漢字は使用して構いません
+2. 難しい言い回しは避ける
+3. 1文は短く、明確に
 4. 「です・ます」調で統一する
-5. 具体的な数字やエピソードを入れると説得力が増す
-6. 結論→理由→具体例→まとめの構造を意識する
+5. 具体的な数字やエピソードを入れる
 
 【出力の長さ】
 - 志望動機: 220〜270字
@@ -953,6 +964,39 @@ def create_easy_japanese_prompt(data):
 （本文）
 """
     return prompt
+
+
+@app.route('/api/generate_motivation', methods=['POST'])
+def generate_motivation():
+    """AIで志望動機・趣味特技・自己PRを生成"""
+    if session.get('role') != 'student':
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    data = request.get_json()
+    
+    required_fields = [
+        'company_name', 'desired_position', 'high_school_efforts',
+        'current_part_time', 'part_time_description', 'has_leader_exp',
+        'part_time_achievement', 'languages', 'certifications',
+        'strengths', 'how_overcome', 'hobbies', 'career_plan'
+    ]
+    
+    missing_fields = [f for f in required_fields if not data.get(f)]
+    if missing_fields:
+        return jsonify({'error': f'必須項目が不足しています: {missing_fields}'}), 400
+    
+    prompt = create_easy_japanese_prompt(data)
+    
+    if GEMINI_AVAILABLE and gemini_model:
+        try:
+            response = gemini_model.generate_content(prompt)
+            result = parse_ai_response(response.text)
+            return jsonify(result)
+        except Exception as e:
+            print(f"【Geminiエラー】: {e}")
+            return jsonify(get_sample_easy_motivation()), 200
+    else:
+        return jsonify(get_sample_easy_motivation()), 200
 
 
 def parse_ai_response(text):
