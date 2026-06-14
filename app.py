@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.3.6
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.3.7
 
 # -*- coding: utf-8 -*-
 import os
@@ -14,64 +14,21 @@ from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 
 
-# Gemini設定の前に一時的に追加（デバッグ用）
-try:
-    import google.generativeai as genai
-    API_KEY = os.environ.get('GOOGLE_API_KEY') or os.environ.get('GEMINI_API_KEY')
-    if API_KEY:
-        genai.configure(api_key=API_KEY)
-        print("【デバッグ】利用可能なモデル一覧:")
-        for model in genai.list_models():
-            if 'generateContent' in model.supported_generation_methods:
-                print(f"  - {model.name}")
-except Exception as e:
-    print(f"【デバッグ】モデル一覧取得エラー: {e}")
-
-# ========== Gemini設定 ==========
+# ========== Gemini設定（簡易版） ==========
 GEMINI_AVAILABLE = False
 gemini_model = None
 
 try:
     import google.generativeai as genai
-    import time
     
-    # 環境変数からAPIキーを取得
     API_KEY = os.environ.get('GOOGLE_API_KEY') or os.environ.get('GEMINI_API_KEY')
     
     if API_KEY:
         genai.configure(api_key=API_KEY)
-        
-        # 正しいモデル名（models/プレフィックスが必要な場合も）
-        # 試すべきモデル名のリスト
-        model_candidates = [
-            'gemini-1.5-pro',
-            'gemini-1.5-flash',
-            'gemini-pro',
-            'models/gemini-1.5-pro',
-            'models/gemini-1.5-flash',
-            'models/gemini-pro',
-        ]
-        
-        selected_model = None
-        for model_name in model_candidates:
-            try:
-                test_model = genai.GenerativeModel(model_name)
-                # 簡単なテスト
-                test_model.generate_content("test")
-                selected_model = model_name
-                gemini_model = test_model
-                print(f"【Gemini】モデル {model_name} が有効です")
-                break
-            except Exception as e:
-                print(f"【Gemini】モデル {model_name} は無効: {e}")
-                continue
-        
-        if selected_model:
-            GEMINI_AVAILABLE = True
-            print(f"【Gemini】有効化されました (モデル: {selected_model})")
-        else:
-            print("【Gemini】有効なモデルが見つかりませんでした")
-            
+        # models/プレフィックス付きで指定
+        gemini_model = genai.GenerativeModel('models/gemini-2.5-flash')
+        GEMINI_AVAILABLE = True
+        print("【Gemini】有効化されました (モデル: models/gemini-2.5-flash)")
     else:
         print("【Gemini】APIキーが設定されていません")
         
