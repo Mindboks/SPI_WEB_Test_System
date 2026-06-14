@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.3.8
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.3.9
 
 # -*- coding: utf-8 -*-
 import os
@@ -142,6 +142,8 @@ class LRUCache:
 
 _comment_cache = LRUCache(maxsize=100)
 
+
+
 def generate_ai_comment_with_gemini(score, details_data, student_name, test_name):
     """Geminiコメント生成（タイムアウト・キャッシュ付き・高速化）"""
     
@@ -167,25 +169,44 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
     max_category = labels[scores.index(max(scores))] if scores else "なし"
     min_category = labels[scores.index(min(scores))] if scores else "なし"
     
+    # 強み・弱みのカテゴリーをリストアップ
+    strong_cats = [labels[i] for i in range(len(labels)) if i < len(scores) and scores[i] >= 70]
+    weak_cats = [labels[i] for i in range(len(labels)) if i < len(scores) and scores[i] <= 50]
+    
     category_results = "\n".join([f"- {labels[i]}: {scores[i]}%" for i in range(len(labels)) if i < len(scores)])
     
-    prompt = f"""教育カウンセラーとして、学生の試験結果を分析してください。
+    # バランスの取れたプロンプト（300〜400字程度を期待）
+    prompt = f"""あなたは教育カウンセラーです。以下の学生の試験結果を分析し、励ましと具体的なアドバイスを含むコメントを日本語で作成してください。
 
-学生: {student_name}
-試験: {test_name}
-得点: {score}点/100点
+【学生情報】
+名前: {student_name}
+試験名: {test_name}
+総合得点: {score}点 / 100点
+平均正解率: {avg_score:.1f}%
 
-カテゴリー別:
+【カテゴリー別成績】
 {category_results}
 
-得意: {max_category}
-苦手: {min_category}
+【特徴】
+得意分野: {', '.join(strong_cats) if strong_cats else '特になし'}
+苦手分野: {', '.join(weak_cats) if weak_cats else '特になし'}
 
-簡潔に（150字以内）：
-💡総合評価:
-⭐強み:
-📚改善点:
-🎯次のステップ:"""
+【出力形式】
+以下の4つのセクションに分けて、全体で300〜400字程度で回答してください：
+
+💡 **総合評価**
+（学生の頑張りを認め、率直な評価を）
+
+⭐ **強み**
+（得意な分野と、その強みをどう活かせるかの具体的なアドバイス）
+
+📚 **改善ポイント**
+（苦手な分野と、具体的な学習方法の提案）
+
+🎯 **次のステップ**
+（今後どのように学習を進めるべきかの具体的な行動計画）
+
+全体として、学生のモチベーションが上がるような温かみのある表現を心がけてください。"""
     
     try:
         result = [None]
@@ -195,12 +216,13 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
             try:
                 response = gemini_model.generate_content(prompt)
                 result[0] = response.text.lstrip('\n\r ')
+                print(f"【Gemini】コメント生成完了（{len(result[0])}文字）")
             except Exception as e:
                 error[0] = e
         
         thread = threading.Thread(target=call_gemini)
         thread.start()
-        thread.join(timeout=60)  # 60秒に延長
+        thread.join(timeout=90)  # より詳細なコメントのために90秒に延長
         
         if thread.is_alive():
             print("【Geminiタイムアウト】フォールバック")
@@ -219,6 +241,9 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
     except Exception as e:
         print(f"【Geminiエラー】: {e}")
         return generate_ai_comment(score, details_data)
+
+
+
 
 # ========== リクエスト前処理 ==========
 @app.before_request
