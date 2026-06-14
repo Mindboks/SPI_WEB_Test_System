@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.3.2
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.3.3
 
 # -*- coding: utf-8 -*-
 import os
@@ -14,33 +14,30 @@ from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 
 
-# ========== Gemini設定 ==========
+# ========== Gemini設定（修正版） ==========
 GEMINI_AVAILABLE = False
 gemini_model = None
 
 try:
     import google.generativeai as genai
-
-    # 修正前: ライブラリ任せ
-    # genai.configure(api_key=GEMINI_API_KEY)
-
-    # 修正後: コード側で環境変数を読み込む
-    import os
-
-    # 1. 環境変数から直接APIキーを取得 (GOOGLE_API_KEYを優先)
+    import time
+    
+    # 環境変数からAPIキーを取得
     API_KEY = os.environ.get('GOOGLE_API_KEY') or os.environ.get('GEMINI_API_KEY')
-
+    
     if API_KEY:
         genai.configure(api_key=API_KEY)
-        # モデル名も最新のものに修正
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # 高速なモデルを使用
+        gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+        GEMINI_AVAILABLE = True
+        print(f"【Gemini】有効化されました (モデル: gemini-1.5-flash)")
     else:
-        print("エラー: APIキーが見つかりません")
-        # フォールバック処理
+        print("【Gemini】APIキーが設定されていません")
 except ImportError:
     print("【Gemini】パッケージがインストールされていません")
 except Exception as e:
     print(f"【Gemini】初期化エラー: {e}")
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -968,6 +965,25 @@ def generate_motivation():
             return jsonify(get_sample_easy_motivation()), 200
     else:
         return jsonify(get_sample_easy_motivation()), 200
+
+    if GEMINI_AVAILABLE and gemini_model:
+        try:
+            print("【デバッグ】Geminiリクエスト開始")
+            start_time = time.time()
+            
+            # ... リクエスト処理 ...
+            
+            end_time = time.time()
+            print(f"【デバッグ】Gemini応答時間: {end_time - start_time}秒")
+            
+        except Exception as e:
+            print(f"【Geminiエラー】: {e}")
+            return jsonify(get_sample_easy_motivation()), 200
+
+
+
+
+
 
 # ========== サーバー起動 ==========
 if __name__ == '__main__':
