@@ -21,7 +21,6 @@
             align-items: center;
             min-height: 100vh;
             font-family: 'Noto Sans JP', sans-serif;
-            overflow: hidden;
             color: #f8fafc;
         }
         .slide-container {
@@ -156,7 +155,6 @@
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb:hover { background: #475569; }
         .footer-bar {
             margin-top: 1.5vh;
             display: flex;
@@ -214,7 +212,6 @@
                 width: 100%;
             }
         }
-        /* ローディングアニメーション */
         .skeleton-loader {
             background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
             background-size: 200% 100%;
@@ -261,23 +258,16 @@
                                 <th style="text-align: right;">正解率</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            {% for i in range(details.labels|length) %}
-                            <tr>
-                                <td class="fw-bold">{{ details.labels[i] }}</td>
-                                <td class="cat-score">{{ details.scores[i] }}%</td>
-                            </tr>
-                            {% endfor %}
+                        <tbody id="category-table-body">
+                            <!-- 動的に挿入 -->
                         </tbody>
                     </table>
                 </div>
             </div>
 
-            <!-- AIコメント表示エリア（非同期読み込み） -->
             <div class="info-card shadow-sm">
                 <div class="card-title-label"><i class="fa-solid fa-robot text-success"></i> AIパーソナライズ・アドバイス</div>
                 <div id="ai-comment-area">
-                    <!-- ローディング中 -->
                     <div id="comment-loading" class="text-center py-4">
                         <div class="spinner-border text-success mb-2" role="status">
                             <span class="visually-hidden">Loading...</span>
@@ -285,7 +275,6 @@
                         <p class="text-muted mb-0">AIがコメントを生成中です...</p>
                         <p class="small text-muted">しばらくお待ちください</p>
                     </div>
-                    <!-- コメント本体（後から表示） -->
                     <div id="comment-body" class="ai-comment-box" style="display: none;"></div>
                 </div>
             </div>
@@ -293,8 +282,8 @@
     </div>
     
     <div id="chart-data" 
-         data-labels="{{ details.labels | tojson }}" 
-         data-scores="{{ details.scores | tojson }}" 
+         data-labels='{{ details.labels | tojson | safe }}' 
+         data-scores='{{ details.scores | tojson | safe }}' 
          style="display:none;"></div>
     
     <footer class="footer-bar">
@@ -309,125 +298,185 @@
 
 <script>
     (function() {
-        // レーダーチャート描画
+        console.log('【デバッグ】result_page.html 読み込み開始');
+        
+        // ========== 1. レーダーチャート描画 ==========
         const canvas = document.getElementById('radarChart');
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
-            const dataElement = document.getElementById('chart-data');
+        const dataElement = document.getElementById('chart-data');
+        
+        if (!canvas) {
+            console.error('【デバッグ】radarChart要素が見つかりません');
+            return;
+        }
+        
+        if (!dataElement) {
+            console.error('【デバッグ】chart-data要素が見つかりません');
+            return;
+        }
+        
+        let labels = [];
+        let scores = [];
+        
+        try {
+            const labelsAttr = dataElement.getAttribute('data-labels');
+            const scoresAttr = dataElement.getAttribute('data-scores');
             
-            if (dataElement) {
-                let labels = [];
-                let scores = [];
-                
-                try {
-                    const labelsAttr = dataElement.getAttribute('data-labels');
-                    const scoresAttr = dataElement.getAttribute('data-scores');
-                    
-                    labels = JSON.parse(labelsAttr || '[]');
-                    scores = JSON.parse(scoresAttr || '[]');
-                } catch(e) {
-                    console.error('データ解析エラー:', e);
-                    labels = ['データがありません'];
-                    scores = [0];
-                }
-                
-                if (labels.length === 0) {
-                    labels = ['データがありません'];
-                    scores = [0];
-                }
-                
-                new Chart(ctx, {
-                    type: 'radar',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: '正解率 (%)',
-                            data: scores,
-                            backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                            borderColor: '#10b981',
-                            borderWidth: 3,
-                            pointBackgroundColor: '#ffffff',
-                            pointBorderColor: '#10b981',
-                            pointRadius: 5,
-                            pointHoverRadius: 7,
-                            fill: true
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { 
-                                display: !(labels.length === 1 && labels[0] === 'データがありません')
-                            },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        return `${context.label}: ${context.raw}%`;
-                                    }
+            console.log('【デバッグ】data-labels:', labelsAttr);
+            console.log('【デバッグ】data-scores:', scoresAttr);
+            
+            labels = JSON.parse(labelsAttr || '[]');
+            scores = JSON.parse(scoresAttr || '[]');
+            
+            console.log('【デバッグ】パース後 labels:', labels);
+            console.log('【デバッグ】パース後 scores:', scores);
+            console.log('【デバッグ】カテゴリー数:', labels.length);
+            
+        } catch(e) {
+            console.error('【デバッグ】データ解析エラー:', e);
+            labels = ['データがありません'];
+            scores = [0];
+        }
+        
+        // カテゴリーテーブルを動的に生成
+        const tableBody = document.getElementById('category-table-body');
+        if (tableBody && labels.length > 0 && labels[0] !== 'データがありません') {
+            tableBody.innerHTML = '';
+            for (let i = 0; i < labels.length; i++) {
+                const row = tableBody.insertRow();
+                row.insertCell(0).innerHTML = `<td class="fw-bold">${labels[i]}</td>`;
+                row.insertCell(1).innerHTML = `<td class="cat-score">${scores[i]}%</td>`;
+            }
+        } else if (tableBody) {
+            tableBody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">データがありません</td></tr>';
+        }
+        
+        // チャート描画（データがある場合のみ）
+        const ctx = canvas.getContext('2d');
+        
+        if (labels.length > 0 && labels[0] !== 'データがありません') {
+            new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '正解率 (%)',
+                        data: scores,
+                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                        borderColor: '#10b981',
+                        borderWidth: 3,
+                        pointBackgroundColor: '#ffffff',
+                        pointBorderColor: '#10b981',
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.label}: ${context.raw}%`;
                                 }
                             }
-                        },
-                        scales: {
-                            r: {
-                                beginAtZero: true,
-                                max: 100,
-                                ticks: {
-                                    stepSize: 20,
-                                    backdropColor: 'transparent'
-                                },
-                                grid: {
-                                    color: 'rgba(255,255,255,0.15)'
-                                },
-                                angleLines: {
-                                    color: 'rgba(255,255,255,0.15)'
-                                },
-                                pointLabels: {
-                                    color: '#f8fafc',
-                                    font: {
-                                        size: 12,
-                                        weight: 'bold',
-                                        family: 'Noto Sans JP'
-                                    }
+                        }
+                    },
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                stepSize: 20,
+                                backdropColor: 'transparent'
+                            },
+                            grid: {
+                                color: 'rgba(255,255,255,0.15)'
+                            },
+                            angleLines: {
+                                color: 'rgba(255,255,255,0.15)'
+                            },
+                            pointLabels: {
+                                color: '#f8fafc',
+                                font: {
+                                    size: 12,
+                                    weight: 'bold',
+                                    family: 'Noto Sans JP'
                                 }
                             }
                         }
                     }
-                });
-            }
+                }
+            });
+            console.log('【デバッグ】レーダーチャート描画完了');
+        } else {
+            console.log('【デバッグ】データがないためチャートを描画しません');
+            // ダミーデータで表示
+            new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: ['データなし'],
+                    datasets: [{
+                        data: [0],
+                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                        borderColor: '#10b981',
+                        borderWidth: 3,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: true } }
+                }
+            });
         }
         
-        // ========== 非同期AIコメント取得 ==========
+        // ========== 2. 非同期AIコメント取得 ==========
         const resultId = "{{ result_id }}";
         const commentLoading = document.getElementById('comment-loading');
         const commentBody = document.getElementById('comment-body');
         
+        console.log('【デバッグ】resultId:', resultId);
+        
         if (resultId && commentLoading && commentBody) {
-            fetch(`/api/result/${resultId}/ai_comment`)
-                .then(res => {
-                    if (!res.ok) {
-                        throw new Error(`HTTP error! status: ${res.status}`);
-                    }
-                    return res.json();
-                })
-                .then(data => {
-                    commentLoading.style.display = 'none';
-                    if (data.comment) {
-                        commentBody.innerText = data.comment;
-                    } else if (data.error) {
-                        commentBody.innerText = 'コメントを取得できませんでした。\n' + data.error;
-                    } else {
-                        commentBody.innerText = 'コメントを取得できませんでした。';
-                    }
-                    commentBody.style.display = 'block';
-                })
-                .catch(error => {
-                    console.error('AIコメント取得エラー:', error);
-                    commentLoading.style.display = 'none';
-                    commentBody.innerText = 'コメントの取得中にエラーが発生しました。\nページを再読み込みしても改善しない場合は、管理者にお問い合わせください。';
-                    commentBody.style.display = 'block';
-                });
+            fetch(`/api/result/${resultId}/ai_comment`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include'
+            })
+            .then(res => {
+                console.log('【デバッグ】AIコメントレスポンスステータス:', res.status);
+                if (!res.ok) {
+                    throw new Error(`HTTP error! status: ${res.status}`);
+                }
+                return res.json();
+            })
+            .then(data => {
+                console.log('【デバッグ】AIコメントデータ:', data);
+                commentLoading.style.display = 'none';
+                if (data.comment) {
+                    commentBody.innerText = data.comment;
+                } else if (data.error) {
+                    commentBody.innerText = 'コメントを取得できませんでした。\n' + data.error;
+                } else {
+                    commentBody.innerText = 'コメントを取得できませんでした。';
+                }
+                commentBody.style.display = 'block';
+            })
+            .catch(error => {
+                console.error('【デバッグ】AIコメント取得エラー:', error);
+                commentLoading.style.display = 'none';
+                commentBody.innerText = 'コメントの取得中にエラーが発生しました。\nページを再読み込みしても改善しない場合は、管理者にお問い合わせください。';
+                commentBody.style.display = 'block';
+            });
         }
+        
+        console.log('【デバッグ】result_page.html 読み込み完了');
     })();
 </script>
 </body>
