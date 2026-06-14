@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.3.1
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.3.2
 
 # -*- coding: utf-8 -*-
 import os
@@ -20,14 +20,23 @@ gemini_model = None
 
 try:
     import google.generativeai as genai
-    GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
-    if GEMINI_API_KEY:
-        genai.configure(api_key=GEMINI_API_KEY)
-        gemini_model = genai.GenerativeModel('models/gemini-2.5-pro')
-        GEMINI_AVAILABLE = True
-        print(f"【Gemini】有効化されました (APIキー長: {len(GEMINI_API_KEY)})")
+
+    # 修正前: ライブラリ任せ
+    # genai.configure(api_key=GEMINI_API_KEY)
+
+    # 修正後: コード側で環境変数を読み込む
+    import os
+
+    # 1. 環境変数から直接APIキーを取得 (GOOGLE_API_KEYを優先)
+    API_KEY = os.environ.get('GOOGLE_API_KEY') or os.environ.get('GEMINI_API_KEY')
+
+    if API_KEY:
+        genai.configure(api_key=API_KEY)
+        # モデル名も最新のものに修正
+        model = genai.GenerativeModel('gemini-1.5-flash')
     else:
-        print("【Gemini】APIキーが設定されていません")
+        print("エラー: APIキーが見つかりません")
+        # フォールバック処理
 except ImportError:
     print("【Gemini】パッケージがインストールされていません")
 except Exception as e:
@@ -195,7 +204,7 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
         
         thread = threading.Thread(target=call_gemini)
         thread.start()
-        thread.join(timeout=10)  # 10秒に延長
+        thread.join(timeout=60)  # 60秒に延長
         
         if thread.is_alive():
             print("【Geminiタイムアウト】フォールバック")
@@ -926,7 +935,7 @@ def generate_motivation():
     
     if GEMINI_AVAILABLE and gemini_model:
         try:
-            # タイムアウト15秒で実行
+            # タイムアウト60秒で実行
             result = [None]
             error = [None]
             
@@ -939,7 +948,7 @@ def generate_motivation():
             
             thread = threading.Thread(target=call_gemini)
             thread.start()
-            thread.join(timeout=15)  # 15秒タイムアウト
+            thread.join(timeout=60)  # 60秒タイムアウト
             
             if thread.is_alive():
                 print("【Geminiタイムアウト】志望動機生成")
