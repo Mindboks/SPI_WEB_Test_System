@@ -430,62 +430,85 @@
     }
     
     // AI生成関数
-    async function generateMotivation() {
-        const formData = getFormData();
+// AI生成関数 - 完全に入れ替え
+async function generateMotivation() {
+    console.log('【デバッグ】generateMotivation 関数が呼ばれました');
+    
+    // フォームのバリデーション
+    const form = document.getElementById('motivation-form');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+    
+    const formData = getFormData();
+    console.log('【デバッグ】送信データ:', formData);
+    
+    // ローディング表示
+    const loadingOverlay = document.getElementById('loading-overlay');
+    if (loadingOverlay) loadingOverlay.style.display = 'flex';
+    
+    try {
+        // credentials: 'include' を追加してCookieを送信（重要！）
+        const response = await fetch('/api/generate_motivation', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include',  // ← これが重要！セッションCookieを送信
+            body: JSON.stringify(formData)
+        });
         
-        // Bootstrapバリデーションを使用
-        if (!validateFormWithBootstrap(formData)) {
+        console.log('【デバッグ】レスポンスステータス:', response.status);
+        
+        // 認証エラーの場合
+        if (response.status === 401) {
+            alert('セッションが切れました。再度ログインしてください。');
+            window.location.href = '/login';
             return;
         }
         
-        // ローディング表示
-        const loadingOverlay = document.getElementById('loading-overlay');
-        if (loadingOverlay) loadingOverlay.style.display = 'flex';
-        
-        try {
-            console.log('APIリクエスト送信:', formData);
-            
-            const response = await fetch('/api/generate_motivation', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(formData)
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const result = await response.json();
-            console.log('APIレスポンス:', result);
-            
-            if (result.error) {
-                alert('エラーが発生しました: ' + result.error);
-                return;
-            }
-            
-            // 結果を表示
-            const motivationText = document.getElementById('motivation-text');
-            const hobbyText = document.getElementById('hobby-text');
-            const selfprText = document.getElementById('selfpr-text');
-            const resultArea = document.getElementById('result-area');
-            
-            if (motivationText) motivationText.innerHTML = (result.motivation || '').replace(/\n/g, '<br>');
-            if (hobbyText) hobbyText.innerHTML = (result.hobby || '').replace(/\n/g, '<br>');
-            if (selfprText) selfprText.innerHTML = (result.self_pr || '').replace(/\n/g, '<br>');
-            if (resultArea) resultArea.style.display = 'block';
-            
-            // 結果までスクロール
-            if (resultArea) resultArea.scrollIntoView({ behavior: 'smooth' });
-            
-        } catch (error) {
-            console.error('Error:', error);
-            alert('通信エラーが発生しました。もう一度お試しください。');
-        } finally {
-            if (loadingOverlay) loadingOverlay.style.display = 'none';
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
+        
+        const result = await response.json();
+        console.log('APIレスポンス:', result);
+        
+        if (result.error) {
+            alert('エラーが発生しました: ' + result.error);
+            return;
+        }
+        
+        // 結果を表示
+        const motivationText = document.getElementById('motivation-text');
+        const hobbyText = document.getElementById('hobby-text');
+        const selfprText = document.getElementById('selfpr-text');
+        const resultArea = document.getElementById('result-area');
+        
+        if (motivationText) {
+            let html = (result.motivation || '').replace(/\n/g, '<br>');
+            // サンプル文章かどうかチェック（○○が含まれていたら警告）
+            if (html.includes('○○') || html.includes('△△')) {
+                console.warn('【警告】フォールバック文章が返されました。Gemini APIが動作していない可能性があります。');
+                html = '<span class="text-warning">⚠️ 現在、仮の文章を表示しています。AIが応答しないため、しばらくしてから再試行してください。</span><br><br>' + html;
+            }
+            motivationText.innerHTML = html;
+        }
+        if (hobbyText) hobbyText.innerHTML = (result.hobby || '').replace(/\n/g, '<br>');
+        if (selfprText) selfprText.innerHTML = (result.self_pr || '').replace(/\n/g, '<br>');
+        if (resultArea) resultArea.style.display = 'block';
+        
+        // 結果までスクロール
+        if (resultArea) resultArea.scrollIntoView({ behavior: 'smooth' });
+        
+    } catch (error) {
+        console.error('Error:', error);
+        alert('通信エラーが発生しました。もう一度お試しください。');
+    } finally {
+        if (loadingOverlay) loadingOverlay.style.display = 'none';
     }
+}
     
     // 再生成
     function regenerateMotivation() {
