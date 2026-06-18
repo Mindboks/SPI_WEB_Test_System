@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.4.4
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.4.5
 
 # -*- coding: utf-8 -*-
 import os
@@ -15,7 +15,25 @@ from collections import OrderedDict
 from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 
+# app.py に追加（Flaskのテンプレートフィルター）
+import datetime
+import pytz
 
+@app.template_filter('to_jst')
+def to_jst_filter(value):
+    """UTCを日本時間に変換するフィルター"""
+    if value is None:
+        return ''
+    if isinstance(value, str):
+        try:
+            value = datetime.datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except:
+            return value
+    # UTC → JSTに変換
+    jst = pytz.timezone('Asia/Tokyo')
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=pytz.UTC)
+    return value.astimezone(jst).strftime('%Y-%m-%d %H:%M:%S')
 # ========== Gemini設定（簡易版） ==========
 GEMINI_AVAILABLE = False
 gemini_model = None
@@ -706,7 +724,6 @@ def api_get_ai_comment(result_id):
 
 @app.route('/student/test/<int:test_id>/result/<int:result_id>')
 def show_result(test_id, result_id):
-    """結果ページ表示（AIコメントは非同期で取得）"""
     if session.get('role') != 'student':
         return redirect(url_for('login'))
     
@@ -734,6 +751,22 @@ def show_result(test_id, result_id):
         if not res:
             flash("結果が見つかりません。")
             return redirect(url_for('student_dashboard'))
+        
+        # ★★★ タイムスタンプを日本時間に変換 ★★★
+        if res.get('timestamp'):
+            try:
+                from datetime import datetime
+                import pytz
+                utc_time = res['timestamp']
+                if isinstance(utc_time, str):
+                    utc_time = datetime.fromisoformat(utc_time.replace('Z', '+00:00'))
+                jst = pytz.timezone('Asia/Tokyo')
+                if utc_time.tzinfo is None:
+                    utc_time = utc_time.replace(tzinfo=pytz.UTC)
+                res['timestamp'] = utc_time.astimezone(jst).strftime('%Y-%m-%d %H:%M:%S')
+            except Exception as e:
+                print(f"時間変換エラー: {e}")
+                # エラー時はそのまま表示
 
         try:
             details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
@@ -755,6 +788,7 @@ def show_result(test_id, result_id):
         traceback.print_exc()
         flash("結果の表示中にエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
+    
 
 @app.route('/student/test/<int:test_id>/cheated', methods=['POST'])
 def cheated_test(test_id):
