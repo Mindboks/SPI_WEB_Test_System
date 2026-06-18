@@ -115,19 +115,18 @@
 </style>
 
 <script>
-    // ========== 1. 基本設定（変数宣言は1回だけ） ==========
-
-    let currentQNo = 1;
-    const totalQuestions = parseInt("{{ total_q }}");
-    const testId = "{{ test.id }}";
-    let isCheated = false;
-    let isSubmitting = false;
-    let timeUpFlag = false;
-    let fullscreenExitAllowed = false;
-    let fullscreenCheckInterval = null;
-    let timerInterval = null;
-    let fullscreenExitCount = 0;       // ← 追加！全画面解除回数カウント
-    let fullscreenWatchStarted = false; // ← 追加！監視開始フラグ
+// ========== 1. 基本設定 ==========
+let currentQNo = 1;
+const totalQuestions = parseInt("{{ total_q }}");
+const testId = "{{ test.id }}";
+let isCheated = false;
+let isSubmitting = false;
+let timeUpFlag = false;
+let fullscreenExitAllowed = false;  
+let fullscreenCheckInterval = null;
+let timerInterval = null;
+let fullscreenExitCount = 0;
+let fullscreenWatchStarted = false;
 
     // ========== 2. タイマー制御（durationはテンプレートから直接取得） ==========
     // durationは app.py から渡された値を使用
@@ -400,6 +399,8 @@ function loadQuestion(qNo) {
         }
     }
 
+// ========== 8. 全画面モード（強制終了を完全無効化） ==========
+
 function startFullscreenWatch() {
     if (fullscreenCheckInterval) clearInterval(fullscreenCheckInterval);
     
@@ -412,37 +413,19 @@ function startFullscreenWatch() {
         
         if (!document.fullscreenElement && sessionStorage.getItem("fullscreen_active") === "true") {
             fullscreenExitCount++;
+            console.log(`【全画面】解除されました（${fullscreenExitCount}回目）`);
             
-            if (fullscreenExitCount === 1) {
-                alert("⚠️ 全画面モードが解除されました。試験を続行するには「OK」を押して全画面に戻してください。");
-                document.documentElement.requestFullscreen().catch(e => {
-                    alert("全画面に戻せませんでした。ブラウザの設定を確認してください。");
-                });
+            // 3回ごとに警告（強制終了なし）
+            if (fullscreenExitCount % 3 === 0) {
+                alert(`⚠️ 全画面モードが${fullscreenExitCount}回解除されました。試験を続行するには全画面に戻してください。`);
             }
-            else if (fullscreenExitCount === 2) {
-                alert("⚠️⚠️ 全画面モードが再度解除されました。これ以上解除されると試験が強制終了されます。");
-                document.documentElement.requestFullscreen().catch(e => {
-                    alert("全画面に戻せませんでした。");
-                });
-            }
-            else {
-                clearInterval(fullscreenCheckInterval);
-                localStorage.removeItem("exam_end_time_id_" + testId);
-                sessionStorage.removeItem("fullscreen_active");
-                
-                if (confirm("❌ 全画面モードが複数回解除されました。不正行為とみなされ、試験を強制終了します。\n「OK」で終了、「キャンセル」で続行（最後のチャンス）")) {
-                    fetch(`/student/test/${testId}/cheated`, { method: "POST" })
-                    .then(() => {
-                        alert("試験を強制終了しました。");
-                        window.location.href = "/student_dashboard";
-                    });
-                } else {
-                    fullscreenExitCount = 0;
-                    document.documentElement.requestFullscreen().catch(e => console.log(e));
-                }
-            }
+            
+            // 全画面に戻す
+            document.documentElement.requestFullscreen().catch(e => {
+                console.log("全画面復帰失敗:", e);
+            });
         }
-    }, 2000);
+    }, 5000);
 }
 
     document.addEventListener("fullscreenchange", function() {
@@ -518,11 +501,12 @@ function startFullscreenWatch() {
                 alert("全画面の切り替えは試験中は禁止されています。");
                 return false;
             }
-            if (e.key === "Escape") {
-                e.preventDefault();
-                alert("全画面解除は試験中は禁止されています。");
-                return false;
-            }
+            // この部分を削除またはコメントアウト
+            // if (e.key === "Escape") {
+            //     e.preventDefault();
+            //     alert("全画面解除は試験中は禁止されています。");
+            //     return false;
+            // }
             if (e.ctrlKey && e.key === "w") {
                 e.preventDefault();
                 alert("タブを閉じることは試験中は禁止されています。");
