@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.4.9
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.5.0
 
 # -*- coding: utf-8 -*-
 import os
@@ -79,7 +79,7 @@ def get_db():
         raise ValueError("DATABASE_URLが設定されていません")   
     conn = psycopg2.connect(db_url)
     
-    # タイムゾーンを日本時間に設定（常に適用）
+    # タイムゾーンを日本時間に設定
     try:
         cur = conn.cursor()
         cur.execute("SET TIME ZONE 'Asia/Tokyo'")
@@ -599,17 +599,21 @@ def take_test(test_id):
         traceback.print_exc()
         flash("システムエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
+    
 
 @app.route('/student/test/<int:test_id>/submit', methods=['GET', 'POST'])
 def submit_test(test_id):
     if session.get('role') != 'student':
         return redirect(url_for('login'))
     
+    user_answers = session.get('answers', {})
     user_id = session.get('user_id')
     session_key = f"answers_{user_id}_{test_id}"
     user_answers = session.get(session_key, {})
     
-    print(f"【デバッグ】提出開始: test_id={test_id}, user_id={user_id}, 回答数={len(user_answers)}")
+    print(f"【デバッグ】提出開始: test_id={test_id}, user_id={user_id}")
+    print(f"【デバッグ】回答数: {len(user_answers)}")
+    print(f"【デバッグ】回答内容: {user_answers}")
     
     conn = None
     try:
@@ -638,6 +642,8 @@ def submit_test(test_id):
             user_answer = user_answers.get(q_no, '')
             correct_answer = str(q['answer']) if q['answer'] else ''
             
+            print(f"【デバッグ】問題{q_no}: ユーザー回答='{user_answer}', 正解='{correct_answer}'")
+            
             if user_answer and user_answer == correct_answer:
                 correct_count += 1
                 genre_stats[category]['correct'] += 1
@@ -654,10 +660,18 @@ def submit_test(test_id):
         analysis = {"labels": labels, "scores": scores}
         final_score = int((correct_count / total_q) * 100)
         
+        print(f"【デバッグ】正解数: {correct_count}/{total_q}, スコア: {final_score}")
+        print(f"【デバッグ】分析: {analysis}")
+        
+        # ★★★ タイムスタンプを日本時間で保存 ★★★
+        from datetime import datetime, timedelta
+        now_utc = datetime.utcnow()
+        now_jst = now_utc + timedelta(hours=9)
+        
         cur.execute('''
             INSERT INTO results (user_id, test_id, score, details, timestamp) 
-            VALUES (%s, %s, %s, %s, NOW()) RETURNING id
-        ''', (user_id, test_id, final_score, json.dumps(analysis)))
+            VALUES (%s, %s, %s, %s, %s) RETURNING id
+        ''', (user_id, test_id, final_score, json.dumps(analysis), now_jst))
         
         result_id = cur.fetchone()['id']
         conn.commit()
@@ -722,6 +736,7 @@ def api_get_ai_comment(result_id):
         print(f"AI comment error: {e}")
         return jsonify({'error': str(e)}), 500
 
+
 @app.route('/student/test/<int:test_id>/result/<int:result_id>')
 def show_result(test_id, result_id):
     if session.get('role') != 'student':
@@ -752,20 +767,32 @@ def show_result(test_id, result_id):
             flash("結果が見つかりません。")
             return redirect(url_for('student_dashboard'))
         
-        # ========== 日本時間に変換（+9時間） ==========
+        # ========== タイムスタンプを日本時間に変換 ==========
         if res.get('timestamp'):
             try:
                 from datetime import datetime, timedelta
                 utc_time = res['timestamp']
+                print(f"【デバッグ】元のtimestamp: {utc_time}")
+                
                 if isinstance(utc_time, str):
-                    # ISO形式をパース
                     if 'T' in utc_time:
                         utc_time = datetime.fromisoformat(utc_time.replace('Z', '+00:00'))
                     else:
-                        utc_time = datetime.strptime(utc_time, '%Y-%m-%d %H:%M:%S.%f')
-                # UTCを日本時間に変換（+9時間）
-                jst_time = utc_time + timedelta(hours=9)
-                res['timestamp'] = jst_time.strftime('%Y-%m-%d %H:%M:%S')
+                        # PostgreSQLのtimestamp形式に対応
+                        if '.' in utc_time:
+                            utc_time = datetime.strptime(utc_time, '%Y-%m-%d %H:%M:%S.%f')
+                        else:
+                            utc_time = datetime.strptime(utc_time, '%Y-%m-%d %H:%M:%S')
+                
+                # UTCとして認識
+                if utc_time.tzinfo is None:
+                    import pytz
+                    utc_time = pytz.UTC.localize(utc_time)
+                
+                # 日本時間に変換
+                import pytz
+                jst = pytz.timezone('Asia/Tokyo')
+                res['timestamp'] = utc_time.astimezone(jst).strftime('%Y-%m-%d %H:%M:%S')
                 print(f"【デバッグ】変換後: {res['timestamp']}")
             except Exception as e:
                 print(f"【デバッグ】変換エラー: {e}")
@@ -776,6 +803,8 @@ def show_result(test_id, result_id):
             details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
         except json.JSONDecodeError:
             details_data = {'labels': [], 'scores': []}
+        
+        print(f"【デバッグ】details_data: {details_data}")
         
         return render_template('result_page.html',
             res=dict(res),
