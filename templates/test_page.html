@@ -259,6 +259,12 @@ let fullscreenWatchStarted = false;
 function loadQuestion(qNo) {
     // ★★★ 全画面解除カウントをリセット（ページ遷移ごとにリセット） ★★★
     fullscreenExitCount = 0;
+
+    // ★★★ 問題読み込み時にボタンを確実に有効化 ★★★
+    const nextBtn = document.getElementById("next-btn");
+    nextBtn.disabled = false;
+    nextBtn.classList.remove('btn-saving');
+    nextBtn.classList.add('btn-success');    
     
     let now = new Date().getTime();
     if (endTime && now >= endTime) {
@@ -327,6 +333,14 @@ function loadQuestion(qNo) {
 
     // ========== 6. 解答保存 ==========
     function submitAnswer(isSkip) {
+        const nextBtn = document.getElementById("next-btn");
+        
+        // ★★★ ボタンが無効化されていたら何もしない（二重送信防止） ★★★
+        if (nextBtn.disabled) {
+            console.log("【防止】保存中のため、クリックを無視しました");
+            return;
+        }
+        
         let selectedChoice = "";
         if (!isSkip) {
             const checkedRadio = document.querySelector('input[name="choice"]:checked');
@@ -337,10 +351,9 @@ function loadQuestion(qNo) {
             if (checkedRadio) selectedChoice = checkedRadio.value;
         }
 
-        const nextBtn = document.getElementById("next-btn");
-        
-        // ★★★ ボタンを赤色に変更 ★★★
+        // ボタンを無効化＆赤色に変更
         nextBtn.disabled = true;
+        nextBtn.classList.remove('btn-success');
         nextBtn.classList.add('btn-saving');
         nextBtn.innerHTML = '⏳ 保存中...';
 
@@ -356,11 +369,16 @@ function loadQuestion(qNo) {
             return res.json();
         })
         .then(data => {
-            // ★★★ ボタンを元に戻す ★★★
+            // ボタンを元に戻す
             nextBtn.disabled = false;
             nextBtn.classList.remove('btn-saving');
             nextBtn.classList.add('btn-success');
-            nextBtn.innerHTML = `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
+            
+            if (currentQNo >= totalQuestions) {
+                nextBtn.innerHTML = `最終解答を記録して提出画面へ <i class="bi bi-box-arrow-up"></i>`;
+            } else {
+                nextBtn.innerHTML = `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
+            }
             
             if (currentQNo >= totalQuestions) {
                 finalSubmit();
@@ -370,7 +388,6 @@ function loadQuestion(qNo) {
         })
         .catch(error => {
             console.error("Error:", error);
-            // ★★★ エラー時も元に戻す ★★★
             nextBtn.disabled = false;
             nextBtn.classList.remove('btn-saving');
             nextBtn.classList.add('btn-success');
