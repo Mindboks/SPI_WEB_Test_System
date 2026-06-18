@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.4.8
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.4.9
 
 # -*- coding: utf-8 -*-
 import os
@@ -732,17 +732,8 @@ def show_result(test_id, result_id):
         conn = get_db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # ★★★ 修正：SQLで日本時間に変換 ★★★
         cur.execute('''
-            SELECT 
-                r.id,
-                r.test_id,
-                r.user_id,
-                r.score,
-                r.details,
-                r.comment,
-                (r.timestamp AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Tokyo') AS timestamp,
-                u.name as student_name 
+            SELECT r.*, u.name as student_name 
             FROM results r 
             JOIN users u ON r.user_id = u.id 
             WHERE r.id = %s AND r.user_id = %s
@@ -761,25 +752,20 @@ def show_result(test_id, result_id):
             flash("結果が見つかりません。")
             return redirect(url_for('student_dashboard'))
         
-        # ========== ★★★ ここが重要！ ★★★ ==========
-        # タイムスタンプを日本時間に変換
-        print("【デバッグ】変換処理開始")  # ← この行がログに出るか？
-        
+        # ========== 日本時間に変換（+9時間） ==========
         if res.get('timestamp'):
-            print(f"【デバッグ】元のtimestamp: {res['timestamp']}")
             try:
-                from datetime import datetime
-                import pytz
+                from datetime import datetime, timedelta
                 utc_time = res['timestamp']
                 if isinstance(utc_time, str):
-                    if '+' in utc_time or utc_time.endswith('Z'):
+                    # ISO形式をパース
+                    if 'T' in utc_time:
                         utc_time = datetime.fromisoformat(utc_time.replace('Z', '+00:00'))
                     else:
-                        utc_time = datetime.fromisoformat(utc_time)
-                jst = pytz.timezone('Asia/Tokyo')
-                if utc_time.tzinfo is None:
-                    utc_time = utc_time.replace(tzinfo=pytz.UTC)
-                res['timestamp'] = utc_time.astimezone(jst).strftime('%Y-%m-%d %H:%M:%S')
+                        utc_time = datetime.strptime(utc_time, '%Y-%m-%d %H:%M:%S.%f')
+                # UTCを日本時間に変換（+9時間）
+                jst_time = utc_time + timedelta(hours=9)
+                res['timestamp'] = jst_time.strftime('%Y-%m-%d %H:%M:%S')
                 print(f"【デバッグ】変換後: {res['timestamp']}")
             except Exception as e:
                 print(f"【デバッグ】変換エラー: {e}")
@@ -806,6 +792,7 @@ def show_result(test_id, result_id):
         traceback.print_exc()
         flash("結果の表示中にエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
+    
 
 @app.route('/student/test/<int:test_id>/cheated', methods=['POST'])
 def cheated_test(test_id):
@@ -887,6 +874,7 @@ def api_get_question(test_id, q_no):
         'current_answer': ans_dict.get(str(q_no), ''),
         'status_list': status_list
     })
+
 
 @app.route('/student/test/<int:test_id>/abandon', methods=['POST'])
 def abandon_test(test_id):
