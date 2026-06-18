@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.4.3
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.4.4
 
 # -*- coding: utf-8 -*-
 import os
@@ -15,19 +15,6 @@ from collections import OrderedDict
 from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 
-# app.py の先頭（インポートの後）に追加
-# タイムゾーンを日本時間に設定
-os.environ['TZ'] = 'Asia/Tokyo'
-try:
-    time.tzset()
-except AttributeError:
-    pass  # Windowsでは無視
-
-# デバッグ用に追加
-print(f"現在時刻: {datetime.datetime.now()}")
-print(f"TZ環境変数: {os.environ.get('TZ')}")
-print(f"タイムゾーン: {time.tzname}")
-# 日本時間が表示されればOK
 
 # ========== Gemini設定（簡易版） ==========
 GEMINI_AVAILABLE = False
@@ -73,12 +60,15 @@ def get_db():
     if not db_url:
         raise ValueError("DATABASE_URLが設定されていません")   
     conn = psycopg2.connect(db_url)
-
-        # タイムゾーンを日本時間に設定
-    cur = conn.cursor()
-    cur.execute("SET TIME ZONE 'Asia/Tokyo'")
-    cur.close()
-
+    
+    # タイムゾーンを日本時間に設定（常に適用）
+    try:
+        cur = conn.cursor()
+        cur.execute("SET TIME ZONE 'Asia/Tokyo'")
+        cur.close()
+    except Exception as e:
+        print(f"タイムゾーン設定エラー: {e}")
+    
     return conn
 
 def hash_password(password):
@@ -790,13 +780,14 @@ def api_get_question(test_id, q_no):
     if session.get('role') != 'student': 
         return jsonify({'error': 'Unauthorized'}), 401
     
-    # テストIDとユーザーIDで一意のキーを作成
+    # ユーザー固有のセッションキー
     user_id = session.get('user_id')
     session_key = f"answers_{user_id}_{test_id}"
     
     # セッションにanswersがなければ初期化
     if session_key not in session:
         session[session_key] = {}
+        session.modified = True
     
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -806,15 +797,17 @@ def api_get_question(test_id, q_no):
         ans_dict = session[session_key]
         
         # 既に回答済みでない場合のみ保存
-        if str(q_no) not in ans_dict or ans_dict[str(q_no)] == "":
+        q_no_str = str(q_no)
+        if q_no_str not in ans_dict or ans_dict[q_no_str] == "":
             if data.get('skip'):
-                ans_dict[str(q_no)] = ""
+                ans_dict[q_no_str] = ""
             else:
-                ans_dict[str(q_no)] = str(data.get('choice', ''))
+                ans_dict[q_no_str] = str(data.get('choice', ''))
             session[session_key] = ans_dict
-            session.modified = True  # セッション更新を明示
+            session.modified = True
+            print(f"【保存】ユーザー{user_id}, 問題{q_no}, 回答: {ans_dict[q_no_str]}")
         else:
-            print(f"【警告】ユーザー{user_id}、問題{q_no}は既に回答済みです")
+            print(f"【警告】ユーザー{user_id}, 問題{q_no}は既に回答済み")
 
     cur.execute('SELECT * FROM questions WHERE test_id = %s AND q_no = %s', (test_id, q_no))
     q = cur.fetchone()
@@ -826,7 +819,6 @@ def api_get_question(test_id, q_no):
     if not q:
         return jsonify({'error': 'Question not found'}), 404
 
-    # 回答状況を取得
     ans_dict = session.get(session_key, {})
     status_list = []
     for i in range(1, total_q + 1):
@@ -1029,6 +1021,15 @@ def generate_motivation():
             return jsonify(get_sample_easy_motivation()), 200
     else:
         return jsonify(get_sample_easy_motivation()), 200
+
+@app.route('/debug/time')
+def debug_time():
+    import datetime
+    now = datetime.datetime.now()
+    return jsonify({
+        'server_time': now.isoformat(),
+        'timezone': str(datetime.datetime.now().astimezone().tzinfo)
+    })
 
 # ========== サーバー起動 ==========
 if __name__ == '__main__':
