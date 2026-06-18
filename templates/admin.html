@@ -70,11 +70,38 @@
         </div>
     </div>
 
+    <!-- 現在公開中のテスト一覧 の上 -->
     <div class="col-md-7 mb-4">
+        
+        <!-- ========== ★★★ ここに追加 ★★★ ========== -->
+        <div class="row mb-3">
+            <div class="col-md-12">
+                <div class="card border-0 bg-light shadow-sm">
+                    <div class="card-body py-2 px-3">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-info-circle text-primary me-2" style="font-size: 1.2rem;"></i>
+                            <span class="small text-muted">
+                                <strong>データ自動削除について：</strong>
+                                未受験のテストは作成から <span class="badge bg-warning text-dark">7日</span> 後に自動削除されます。
+                                受験済みのテスト結果は <span class="badge bg-danger">30日</span> 後に自動削除されます。
+                                （毎日深夜0時に実行）
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 現在公開中のテスト一覧（既存） -->
         <div class="card shadow-sm border-0 bg-white rounded-3 mb-4">
             <div class="card-header bg-dark text-white py-3">
                 <h5 class="card-title mb-0 fw-bold"><i class="bi bi-hdd-network"></i> 現在公開中のテスト一覧</h5>
             </div>
+            <!-- ... 以下既存のコード ... -->
+        </div>
+    </div>
+
+
             <div class="card-body p-0">
                 <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0">
@@ -129,6 +156,7 @@
                                 <th>受けたテスト</th>
                                 <th>得点</th>
                                 <th class="pe-3">日時</th>
+                                <th class="text-center" style="width: 80px;">操作</th>  <!-- ← 追加 -->
                             </tr>
                         </thead>
                         <tbody>
@@ -149,11 +177,19 @@
                                         {% endif %}
                                     </td>
                                     <td class="pe-3 text-muted small" style="font-size: 0.8rem;">{{ r.timestamp }}</td>
+                                    <td class="text-center">  <!-- ← 追加 -->
+                                        <a href="{{ url_for('teacher_view_result', result_id=r.id) }}" 
+                                        class="btn btn-sm btn-outline-primary" 
+                                        target="_blank"
+                                        title="結果を詳細表示">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                    </td>  <!-- ← 追加 -->
                                 </tr>
                                 {% endfor %}
                             {% else %}
                                 <tr>
-                                    <td colspan="5" class="text-center text-muted py-5">まだ受験データはありません。</td>
+                                    <td colspan="6" class="text-center text-muted py-5">まだ受験データはありません。</td>  <!-- ← colspanを6に変更 -->
                                 </tr>
                             {% endif %}
                         </tbody>
@@ -161,6 +197,8 @@
                 </div>
             </div>
         </div>
+
+
     </div>
 </div>
 {% endblock %}

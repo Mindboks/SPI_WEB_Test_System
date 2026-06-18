@@ -3,3 +3,4 @@ psycopg2-binary
 gunicorn
 google-generativeai
 pytz==2024.1
+APScheduler==3.10.4

@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.6.1
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.6.3
 
 # -*- coding: utf-8 -*-
 import os
@@ -14,6 +14,9 @@ import threading
 from collections import OrderedDict
 from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+from apscheduler.schedulers.background import BackgroundScheduler
+
+
 
 # ========== Gemini設定（簡易版） ==========
 GEMINI_AVAILABLE = False
@@ -524,6 +527,45 @@ def delete_test(test_id):
     flash('テストと関連するすべての結果を削除しました。')
     return redirect(url_for('teacher_admin'))
 
+
+# 学生の結果表示
+@app.route('/teacher/student/result/<int:result_id>')
+def teacher_view_result(result_id):
+    if session.get('role') != 'teacher':
+        return redirect(url_for('login'))
+    
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    cur.execute('''
+        SELECT r.*, u.name as student_name, t.name as test_name
+        FROM results r
+        JOIN users u ON r.user_id = u.id
+        JOIN tests t ON r.test_id = t.id
+        WHERE r.id = %s
+    ''', (result_id,))
+    
+    res = cur.fetchone()
+    cur.close()
+    conn.close()
+    
+    if not res:
+        flash("結果が見つかりません。")
+        return redirect(url_for('teacher_admin'))
+    
+    details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
+    
+    return render_template('result_page.html',
+        res=dict(res),
+        details=details_data,
+        result_id=result_id,
+        test_name=res['test_name']
+    )
+
+
+
+
+
 @app.route('/student_dashboard')
 def student_dashboard():
     if session.get('role') != 'student': 
@@ -876,8 +918,10 @@ def check_test_session(test_id):
         return jsonify({'valid': False, 'redirect': url_for('login')})
     return jsonify({'valid': True})
 
-# ========== 志望動機作成機能 ==========
 
+
+
+# ========== 志望動機作成機能 ==========
 @app.route('/motivation_form')
 def motivation_form():
     if session.get('role') != 'student':
@@ -1044,19 +1088,49 @@ def generate_motivation():
     else:
         return jsonify(get_sample_easy_motivation()), 200
 
-# ========== デバッグ用 ==========
-@app.route('/debug/time')
-def debug_time():
-    import datetime
-    import pytz
-    now_utc = datetime.datetime.now(pytz.UTC)
-    jst = pytz.timezone('Asia/Tokyo')
-    now_jst = now_utc.astimezone(jst)
-    return jsonify({
-        'utc': now_utc.isoformat(),
-        'jst': now_jst.isoformat(),
-        'pytz_installed': True
-    })
+
+
+# ========== テストデータ自動削除機能 ==========
+def delete_old_test_data():
+    """未テスト7日経過、テスト完了30日経過のデータを削除"""
+    conn = get_db()
+    cur = conn.cursor()
+    
+    # 1. 未テストのテスト（7日経過）
+    cur.execute('''
+        DELETE FROM questions 
+        WHERE test_id IN (
+            SELECT id FROM tests 
+            WHERE created_at IS NULL 
+            OR created_at < NOW() - INTERVAL '7 days'
+        )
+    ''')
+    
+    cur.execute('''
+        DELETE FROM tests 
+        WHERE created_at IS NULL 
+        OR created_at < NOW() - INTERVAL '7 days'
+    ''')
+    
+    # 2. テスト完了後30日経過の結果
+    cur.execute('''
+        DELETE FROM results 
+        WHERE timestamp < NOW() - INTERVAL '30 days'
+    ''')
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+    print(f"【自動削除】古いテストデータを削除しました（{datetime.datetime.now()}）")
+
+# スケジューラー設定（毎日深夜0時に実行）
+scheduler = BackgroundScheduler()
+scheduler.add_job(delete_old_test_data, 'cron', hour=0, minute=0)
+scheduler.start()
+
+
+
+
 
 # ========== サーバー起動 ==========
 if __name__ == '__main__':
