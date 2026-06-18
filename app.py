@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.5.2
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.5.3
 
 # -*- coding: utf-8 -*-
 import os
@@ -15,25 +15,6 @@ from collections import OrderedDict
 from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 
-# app.py に追加（Flaskのテンプレートフィルター）
-import datetime
-import pytz
-
-@app.template_filter('to_jst')
-def to_jst_filter(value):
-    """UTCを日本時間に変換するフィルター"""
-    if value is None:
-        return ''
-    if isinstance(value, str):
-        try:
-            value = datetime.datetime.fromisoformat(value.replace('Z', '+00:00'))
-        except:
-            return value
-    # UTC → JSTに変換
-    jst = pytz.timezone('Asia/Tokyo')
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=pytz.UTC)
-    return value.astimezone(jst).strftime('%Y-%m-%d %H:%M:%S')
 # ========== Gemini設定（簡易版） ==========
 GEMINI_AVAILABLE = False
 gemini_model = None
@@ -56,7 +37,6 @@ except ImportError:
 except Exception as e:
     print(f"【Gemini】初期化エラー: {e}")
 
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ========== Flaskアプリ設定 ==========
@@ -71,6 +51,24 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=1800,
     SESSION_COOKIE_PERMANENT=False,
 )
+
+# ========== テンプレートフィルター（app定義の後に移動） ==========
+import pytz
+
+@app.template_filter('to_jst')
+def to_jst_filter(value):
+    """UTCを日本時間に変換するフィルター"""
+    if value is None:
+        return ''
+    if isinstance(value, str):
+        try:
+            value = datetime.datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except:
+            return value
+    jst = pytz.timezone('Asia/Tokyo')
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=pytz.UTC)
+    return value.astimezone(jst).strftime('%Y-%m-%d %H:%M:%S')
 
 # ========== データベース接続関数 ==========
 def get_db():
@@ -560,7 +558,7 @@ def take_test(test_id):
     
     session['answers'] = {}
     session['current_test_id'] = test_id
-    session['test_start_time'] = datetime.datetime.now().isoformat()  # ← datetime.datetime に修正
+    session['test_start_time'] = datetime.datetime.now().isoformat()
     
     conn = None
     try:
@@ -582,7 +580,6 @@ def take_test(test_id):
         cur.close()
         conn.close()
         
-        # durationを確実に整数で渡す
         duration = int(test.get('duration', 30))
         
         return render_template('test_page.html', 
@@ -599,21 +596,18 @@ def take_test(test_id):
         traceback.print_exc()
         flash("システムエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
-    
 
 @app.route('/student/test/<int:test_id>/submit', methods=['GET', 'POST'])
 def submit_test(test_id):
     if session.get('role') != 'student':
         return redirect(url_for('login'))
     
-    user_answers = session.get('answers', {})
     user_id = session.get('user_id')
     session_key = f"answers_{user_id}_{test_id}"
     user_answers = session.get(session_key, {})
     
     print(f"【デバッグ】提出開始: test_id={test_id}, user_id={user_id}")
     print(f"【デバッグ】回答数: {len(user_answers)}")
-    print(f"【デバッグ】回答内容: {user_answers}")
     
     conn = None
     try:
@@ -642,8 +636,6 @@ def submit_test(test_id):
             user_answer = user_answers.get(q_no, '')
             correct_answer = str(q['answer']) if q['answer'] else ''
             
-            print(f"【デバッグ】問題{q_no}: ユーザー回答='{user_answer}', 正解='{correct_answer}'")
-            
             if user_answer and user_answer == correct_answer:
                 correct_count += 1
                 genre_stats[category]['correct'] += 1
@@ -661,9 +653,8 @@ def submit_test(test_id):
         final_score = int((correct_count / total_q) * 100)
         
         print(f"【デバッグ】正解数: {correct_count}/{total_q}, スコア: {final_score}")
-        print(f"【デバッグ】分析: {analysis}")
         
-        # ★★★ タイムスタンプを日本時間で保存 ★★★
+        # タイムスタンプを日本時間で保存
         from datetime import datetime, timedelta
         now_utc = datetime.utcnow()
         now_jst = now_utc + timedelta(hours=9)
@@ -678,7 +669,6 @@ def submit_test(test_id):
         cur.close()
         conn.close()
         
-        # セッションをクリア
         session.pop(session_key, None)
         session.pop('current_test_id', None)
         session.pop('test_start_time', None)
@@ -736,7 +726,6 @@ def api_get_ai_comment(result_id):
         print(f"AI comment error: {e}")
         return jsonify({'error': str(e)}), 500
 
-
 @app.route('/student/test/<int:test_id>/result/<int:result_id>')
 def show_result(test_id, result_id):
     if session.get('role') != 'student':
@@ -778,18 +767,15 @@ def show_result(test_id, result_id):
                     if 'T' in utc_time:
                         utc_time = datetime.fromisoformat(utc_time.replace('Z', '+00:00'))
                     else:
-                        # PostgreSQLのtimestamp形式に対応
                         if '.' in utc_time:
                             utc_time = datetime.strptime(utc_time, '%Y-%m-%d %H:%M:%S.%f')
                         else:
                             utc_time = datetime.strptime(utc_time, '%Y-%m-%d %H:%M:%S')
                 
-                # UTCとして認識
                 if utc_time.tzinfo is None:
                     import pytz
                     utc_time = pytz.UTC.localize(utc_time)
                 
-                # 日本時間に変換
                 import pytz
                 jst = pytz.timezone('Asia/Tokyo')
                 res['timestamp'] = utc_time.astimezone(jst).strftime('%Y-%m-%d %H:%M:%S')
@@ -803,8 +789,6 @@ def show_result(test_id, result_id):
             details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
         except json.JSONDecodeError:
             details_data = {'labels': [], 'scores': []}
-        
-        print(f"【デバッグ】details_data: {details_data}")
         
         return render_template('result_page.html',
             res=dict(res),
@@ -821,7 +805,6 @@ def show_result(test_id, result_id):
         traceback.print_exc()
         flash("結果の表示中にエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
-    
 
 @app.route('/student/test/<int:test_id>/cheated', methods=['POST'])
 def cheated_test(test_id):
@@ -847,11 +830,9 @@ def api_get_question(test_id, q_no):
     if session.get('role') != 'student': 
         return jsonify({'error': 'Unauthorized'}), 401
     
-    # ユーザー固有のセッションキー
     user_id = session.get('user_id')
     session_key = f"answers_{user_id}_{test_id}"
     
-    # セッションにanswersがなければ初期化
     if session_key not in session:
         session[session_key] = {}
         session.modified = True
@@ -863,7 +844,6 @@ def api_get_question(test_id, q_no):
         data = request.get_json() or {}
         ans_dict = session[session_key]
         
-        # 既に回答済みでない場合のみ保存
         q_no_str = str(q_no)
         if q_no_str not in ans_dict or ans_dict[q_no_str] == "":
             if data.get('skip'):
@@ -903,7 +883,6 @@ def api_get_question(test_id, q_no):
         'current_answer': ans_dict.get(str(q_no), ''),
         'status_list': status_list
     })
-
 
 @app.route('/student/test/<int:test_id>/abandon', methods=['POST'])
 def abandon_test(test_id):
@@ -1090,7 +1069,7 @@ def generate_motivation():
     else:
         return jsonify(get_sample_easy_motivation()), 200
 
-
+# ========== デバッグ用 ==========
 @app.route('/debug/time')
 def debug_time():
     import datetime
@@ -1103,6 +1082,7 @@ def debug_time():
         'jst': now_jst.isoformat(),
         'pytz_installed': True
     })
+
 # ========== サーバー起動 ==========
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
