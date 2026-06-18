@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.4.0
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.5.0
 
 # -*- coding: utf-8 -*-
 import os
@@ -7,13 +7,33 @@ import io
 import json
 import hashlib
 import re
+import time
+import datetime
 import psycopg2
 import threading
 from collections import OrderedDict
 from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 
+# app.py に追加（Flaskのテンプレートフィルター）
+import datetime
+import pytz
 
+@app.template_filter('to_jst')
+def to_jst_filter(value):
+    """UTCを日本時間に変換するフィルター"""
+    if value is None:
+        return ''
+    if isinstance(value, str):
+        try:
+            value = datetime.datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except:
+            return value
+    # UTC → JSTに変換
+    jst = pytz.timezone('Asia/Tokyo')
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=pytz.UTC)
+    return value.astimezone(jst).strftime('%Y-%m-%d %H:%M:%S')
 # ========== Gemini設定（簡易版） ==========
 GEMINI_AVAILABLE = False
 gemini_model = None
@@ -25,7 +45,6 @@ try:
     
     if API_KEY:
         genai.configure(api_key=API_KEY)
-        # models/プレフィックス付きで指定
         gemini_model = genai.GenerativeModel('models/gemini-2.5-flash')
         GEMINI_AVAILABLE = True
         print("【Gemini】有効化されました (モデル: models/gemini-2.5-flash)")
@@ -59,6 +78,15 @@ def get_db():
     if not db_url:
         raise ValueError("DATABASE_URLが設定されていません")   
     conn = psycopg2.connect(db_url)
+    
+    # タイムゾーンを日本時間に設定
+    try:
+        cur = conn.cursor()
+        cur.execute("SET TIME ZONE 'Asia/Tokyo'")
+        cur.close()
+    except Exception as e:
+        print(f"タイムゾーン設定エラー: {e}")
+    
     return conn
 
 def hash_password(password):
@@ -142,8 +170,6 @@ class LRUCache:
 
 _comment_cache = LRUCache(maxsize=100)
 
-
-
 def generate_ai_comment_with_gemini(score, details_data, student_name, test_name):
     """Geminiコメント生成（タイムアウト・キャッシュ付き・高速化）"""
     
@@ -169,13 +195,11 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
     max_category = labels[scores.index(max(scores))] if scores else "なし"
     min_category = labels[scores.index(min(scores))] if scores else "なし"
     
-    # 強み・弱みのカテゴリーをリストアップ
     strong_cats = [labels[i] for i in range(len(labels)) if i < len(scores) and scores[i] >= 70]
     weak_cats = [labels[i] for i in range(len(labels)) if i < len(scores) and scores[i] <= 50]
     
     category_results = "\n".join([f"- {labels[i]}: {scores[i]}%" for i in range(len(labels)) if i < len(scores)])
     
-    # バランスの取れたプロンプト（300〜400字程度を期待）
     prompt = f"""あなたは教育カウンセラーです。以下の学生の試験結果を分析し、励ましと具体的なアドバイスを含むコメントを日本語で作成してください。
 
 【学生情報】
@@ -195,16 +219,9 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
 以下の4つのセクションに分けて、全体で300〜400字程度で回答してください：
 
 💡 **総合評価**
-（学生の頑張りを認め、率直な評価を）
-
 ⭐ **強み**
-（得意な分野と、その強みをどう活かせるかの具体的なアドバイス）
-
 📚 **改善ポイント**
-（苦手な分野と、具体的な学習方法の提案）
-
 🎯 **次のステップ**
-（今後どのように学習を進めるべきかの具体的な行動計画）
 
 全体として、学生のモチベーションが上がるような温かみのある表現を心がけてください。"""
     
@@ -222,7 +239,7 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
         
         thread = threading.Thread(target=call_gemini)
         thread.start()
-        thread.join(timeout=90)  # より詳細なコメントのために90秒に延長
+        thread.join(timeout=90)
         
         if thread.is_alive():
             print("【Geminiタイムアウト】フォールバック")
@@ -233,7 +250,6 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
         
         comment = result[0] if result[0] else generate_ai_comment(score, details_data)
         
-        # キャッシュに保存
         _comment_cache.set(cache_key, comment)
         
         return comment
@@ -241,9 +257,6 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
     except Exception as e:
         print(f"【Geminiエラー】: {e}")
         return generate_ai_comment(score, details_data)
-
-
-
 
 # ========== リクエスト前処理 ==========
 @app.before_request
@@ -540,8 +553,14 @@ def take_test(test_id):
         flash("受験には学生アカウントでのログインが必要です。")
         return redirect(url_for('login'))
     
+    # 古いセッションを完全にクリア
+    session.pop('answers', None)
+    session.pop('current_test_id', None)
+    session.pop('test_start_time', None)
+    
     session['answers'] = {}
     session['current_test_id'] = test_id
+    session['test_start_time'] = datetime.datetime.now().isoformat()  # ← datetime.datetime に修正
     
     conn = None
     try:
@@ -550,6 +569,12 @@ def take_test(test_id):
         cur.execute('SELECT * FROM tests WHERE id = %s', (test_id,))
         test = cur.fetchone()
         
+        if not test:
+            flash("選択したテストは見つかりませんでした。")
+            return redirect(url_for('student_dashboard'))
+        
+        print(f"【デバッグ】テスト開始: test_id={test_id}, duration={test.get('duration')}")
+        
         cur.execute('SELECT COUNT(*) as total FROM questions WHERE test_id = %s', (test_id,))
         total_data = cur.fetchone()
         total_q = total_data['total'] if total_data else 0
@@ -557,18 +582,24 @@ def take_test(test_id):
         cur.close()
         conn.close()
         
-        if not test:
-            flash("選択したテストは見つかりませんでした。")
-            return redirect(url_for('student_dashboard'))
+        # durationを確実に整数で渡す
+        duration = int(test.get('duration', 30))
         
-        return render_template('test_page.html', test_id=test_id, test=test, total_q=total_q)
+        return render_template('test_page.html', 
+                              test_id=test_id, 
+                              test=test, 
+                              total_q=total_q,
+                              duration=duration)
         
     except Exception as e:
         if conn: 
             conn.close()
-        print(f"Error in take_test: {e}")
+        print(f"【エラー】take_test: {e}")
+        import traceback
+        traceback.print_exc()
         flash("システムエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
+    
 
 @app.route('/student/test/<int:test_id>/submit', methods=['GET', 'POST'])
 def submit_test(test_id):
@@ -576,6 +607,13 @@ def submit_test(test_id):
         return redirect(url_for('login'))
     
     user_answers = session.get('answers', {})
+    user_id = session.get('user_id')
+    session_key = f"answers_{user_id}_{test_id}"
+    user_answers = session.get(session_key, {})
+    
+    print(f"【デバッグ】提出開始: test_id={test_id}, user_id={user_id}")
+    print(f"【デバッグ】回答数: {len(user_answers)}")
+    print(f"【デバッグ】回答内容: {user_answers}")
     
     conn = None
     try:
@@ -604,6 +642,8 @@ def submit_test(test_id):
             user_answer = user_answers.get(q_no, '')
             correct_answer = str(q['answer']) if q['answer'] else ''
             
+            print(f"【デバッグ】問題{q_no}: ユーザー回答='{user_answer}', 正解='{correct_answer}'")
+            
             if user_answer and user_answer == correct_answer:
                 correct_count += 1
                 genre_stats[category]['correct'] += 1
@@ -620,18 +660,28 @@ def submit_test(test_id):
         analysis = {"labels": labels, "scores": scores}
         final_score = int((correct_count / total_q) * 100)
         
+        print(f"【デバッグ】正解数: {correct_count}/{total_q}, スコア: {final_score}")
+        print(f"【デバッグ】分析: {analysis}")
+        
+        # ★★★ タイムスタンプを日本時間で保存 ★★★
+        from datetime import datetime, timedelta
+        now_utc = datetime.utcnow()
+        now_jst = now_utc + timedelta(hours=9)
+        
         cur.execute('''
             INSERT INTO results (user_id, test_id, score, details, timestamp) 
-            VALUES (%s, %s, %s, %s, NOW()) RETURNING id
-        ''', (session.get('user_id'), test_id, final_score, json.dumps(analysis)))
+            VALUES (%s, %s, %s, %s, %s) RETURNING id
+        ''', (user_id, test_id, final_score, json.dumps(analysis), now_jst))
         
         result_id = cur.fetchone()['id']
         conn.commit()
         cur.close()
         conn.close()
         
-        session.pop('answers', None)
+        # セッションをクリア
+        session.pop(session_key, None)
         session.pop('current_test_id', None)
+        session.pop('test_start_time', None)
         
         flash(f'試験を提出しました。得点: {final_score}点 / {total_q}問中{correct_count}問正解')
         
@@ -686,9 +736,9 @@ def api_get_ai_comment(result_id):
         print(f"AI comment error: {e}")
         return jsonify({'error': str(e)}), 500
 
+
 @app.route('/student/test/<int:test_id>/result/<int:result_id>')
 def show_result(test_id, result_id):
-    """結果ページ表示（AIコメントは非同期で取得）"""
     if session.get('role') != 'student':
         return redirect(url_for('login'))
     
@@ -716,14 +766,46 @@ def show_result(test_id, result_id):
         if not res:
             flash("結果が見つかりません。")
             return redirect(url_for('student_dashboard'))
+        
+        # ========== タイムスタンプを日本時間に変換 ==========
+        if res.get('timestamp'):
+            try:
+                from datetime import datetime, timedelta
+                utc_time = res['timestamp']
+                print(f"【デバッグ】元のtimestamp: {utc_time}")
+                
+                if isinstance(utc_time, str):
+                    if 'T' in utc_time:
+                        utc_time = datetime.fromisoformat(utc_time.replace('Z', '+00:00'))
+                    else:
+                        # PostgreSQLのtimestamp形式に対応
+                        if '.' in utc_time:
+                            utc_time = datetime.strptime(utc_time, '%Y-%m-%d %H:%M:%S.%f')
+                        else:
+                            utc_time = datetime.strptime(utc_time, '%Y-%m-%d %H:%M:%S')
+                
+                # UTCとして認識
+                if utc_time.tzinfo is None:
+                    import pytz
+                    utc_time = pytz.UTC.localize(utc_time)
+                
+                # 日本時間に変換
+                import pytz
+                jst = pytz.timezone('Asia/Tokyo')
+                res['timestamp'] = utc_time.astimezone(jst).strftime('%Y-%m-%d %H:%M:%S')
+                print(f"【デバッグ】変換後: {res['timestamp']}")
+            except Exception as e:
+                print(f"【デバッグ】変換エラー: {e}")
+                import traceback
+                traceback.print_exc()
 
-        # 安全なJSONパース
         try:
             details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
         except json.JSONDecodeError:
             details_data = {'labels': [], 'scores': []}
         
-        # AIコメントは呼ばない → テンプレートに result_id だけ渡す
+        print(f"【デバッグ】details_data: {details_data}")
+        
         return render_template('result_page.html',
             res=dict(res),
             details=details_data,
@@ -734,11 +816,12 @@ def show_result(test_id, result_id):
     except Exception as e:
         if conn:
             conn.close()
-        print(f"Error: {e}")
+        print(f"【エラー】show_result: {e}")
         import traceback
         traceback.print_exc()
         flash("結果の表示中にエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
+    
 
 @app.route('/student/test/<int:test_id>/cheated', methods=['POST'])
 def cheated_test(test_id):
@@ -763,19 +846,35 @@ def cheated_test(test_id):
 def api_get_question(test_id, q_no):
     if session.get('role') != 'student': 
         return jsonify({'error': 'Unauthorized'}), 401
-    if 'answers' not in session: 
-        session['answers'] = {}
+    
+    # ユーザー固有のセッションキー
+    user_id = session.get('user_id')
+    session_key = f"answers_{user_id}_{test_id}"
+    
+    # セッションにanswersがなければ初期化
+    if session_key not in session:
+        session[session_key] = {}
+        session.modified = True
+    
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     
     if request.method == 'POST':
         data = request.get_json() or {}
-        ans_dict = session['answers']
-        if data.get('skip'):
-            ans_dict[str(q_no)] = ""
+        ans_dict = session[session_key]
+        
+        # 既に回答済みでない場合のみ保存
+        q_no_str = str(q_no)
+        if q_no_str not in ans_dict or ans_dict[q_no_str] == "":
+            if data.get('skip'):
+                ans_dict[q_no_str] = ""
+            else:
+                ans_dict[q_no_str] = str(data.get('choice', ''))
+            session[session_key] = ans_dict
+            session.modified = True
+            print(f"【保存】ユーザー{user_id}, 問題{q_no}, 回答: {ans_dict[q_no_str]}")
         else:
-            ans_dict[str(q_no)] = str(data.get('choice', ''))
-        session['answers'] = ans_dict
+            print(f"【警告】ユーザー{user_id}, 問題{q_no}は既に回答済み")
 
     cur.execute('SELECT * FROM questions WHERE test_id = %s AND q_no = %s', (test_id, q_no))
     q = cur.fetchone()
@@ -787,11 +886,12 @@ def api_get_question(test_id, q_no):
     if not q:
         return jsonify({'error': 'Question not found'}), 404
 
+    ans_dict = session.get(session_key, {})
     status_list = []
     for i in range(1, total_q + 1):
         status_list.append({
             'q_no': i,
-            'is_answered': str(i) in session['answers'] and session['answers'][str(i)] != ""
+            'is_answered': str(i) in ans_dict and ans_dict[str(i)] != ""
         })
 
     return jsonify({
@@ -800,9 +900,10 @@ def api_get_question(test_id, q_no):
         'question': q['question'],
         'target': q.get('target', ''),
         'choices': {f'a{i}': q[f'a{i}'] for i in range(1, 11) if q.get(f'a{i}')},
-        'current_answer': session['answers'].get(str(q_no), ''),
+        'current_answer': ans_dict.get(str(q_no), ''),
         'status_list': status_list
     })
+
 
 @app.route('/student/test/<int:test_id>/abandon', methods=['POST'])
 def abandon_test(test_id):
@@ -956,7 +1057,6 @@ def generate_motivation():
     
     if GEMINI_AVAILABLE and gemini_model:
         try:
-            # タイムアウト60秒で実行
             result = [None]
             error = [None]
             
@@ -969,7 +1069,7 @@ def generate_motivation():
             
             thread = threading.Thread(target=call_gemini)
             thread.start()
-            thread.join(timeout=60)  # 60秒タイムアウト
+            thread.join(timeout=60)
             
             if thread.is_alive():
                 print("【Geminiタイムアウト】志望動機生成")
@@ -990,25 +1090,19 @@ def generate_motivation():
     else:
         return jsonify(get_sample_easy_motivation()), 200
 
-    if GEMINI_AVAILABLE and gemini_model:
-        try:
-            print("【デバッグ】Geminiリクエスト開始")
-            start_time = time.time()
-            
-            # ... リクエスト処理 ...
-            
-            end_time = time.time()
-            print(f"【デバッグ】Gemini応答時間: {end_time - start_time}秒")
-            
-        except Exception as e:
-            print(f"【Geminiエラー】: {e}")
-            return jsonify(get_sample_easy_motivation()), 200
 
-
-
-
-
-
+@app.route('/debug/time')
+def debug_time():
+    import datetime
+    import pytz
+    now_utc = datetime.datetime.now(pytz.UTC)
+    jst = pytz.timezone('Asia/Tokyo')
+    now_jst = now_utc.astimezone(jst)
+    return jsonify({
+        'utc': now_utc.isoformat(),
+        'jst': now_jst.isoformat(),
+        'pytz_installed': True
+    })
 # ========== サーバー起動 ==========
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))

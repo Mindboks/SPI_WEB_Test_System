@@ -1,7 +1,8 @@
 {% extends "layout.html" %}
 {% block title %}試験中 / Exam - {{ test.name }}{% endblock %}
 {% block content %}
-<!-- ローディングオーバーレイ（最初は非表示） -->
+
+<!-- ローディングオーバーレイ -->
 <div id="submit-loading" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 10001; display: none; flex-direction: column; justify-content: center; align-items: center; color: white;">
     <div class="spinner-border text-success mb-4" style="width: 4rem; height: 4rem;" role="status">
         <span class="visually-hidden">Loading...</span>
@@ -114,6 +115,8 @@
 </style>
 
 <script>
+    // ========== 1. 基本設定（変数宣言は1回だけ） ==========
+
     let currentQNo = 1;
     const totalQuestions = parseInt("{{ total_q }}");
     const testId = "{{ test.id }}";
@@ -122,21 +125,31 @@
     let timeUpFlag = false;
     let fullscreenExitAllowed = false;
     let fullscreenCheckInterval = null;
+    let timerInterval = null;
+    let fullscreenExitCount = 0;       // ← 追加！全画面解除回数カウント
+    let fullscreenWatchStarted = false; // ← 追加！監視開始フラグ
 
-    // ========== ローディング表示関数 ==========
-    function showLoading() {
-        const loadingDiv = document.getElementById('submit-loading');
-        if (loadingDiv) {
-            loadingDiv.style.display = 'flex';
-        }
+    // ========== 2. タイマー制御（durationはテンプレートから直接取得） ==========
+    // durationは app.py から渡された値を使用
+    let durationMinutes = parseInt("{{ duration }}");
+    
+    // デバッグログ
+    console.log("【デバッグ】durationMinutes:", durationMinutes);
+    console.log("【デバッグ】totalQuestions:", totalQuestions);
+
+    // タイマー初期化（durationMinutesが0以下の場合はデフォルト30分）
+    if (durationMinutes <= 0 || isNaN(durationMinutes)) {
+        durationMinutes = 30;
+        console.warn("【警告】durationが不正な値のため、デフォルトの30分を使用します");
     }
 
-    // ========== 1. タイマー制御 ==========
-    let durationMinutes = parseInt("{{ test.duration }}");
     let endTime = localStorage.getItem("exam_end_time_id_" + testId);
     if (!endTime) {
         endTime = new Date().getTime() + durationMinutes * 60 * 1000;
         localStorage.setItem("exam_end_time_id_" + testId, endTime);
+        console.log("【デバッグ】タイマー開始: " + durationMinutes + "分");
+    } else {
+        console.log("【デバッグ】既存タイマー使用");
     }
 
     function updateTimer() {
@@ -150,25 +163,8 @@
             
             if (!isSubmitting) {
                 isSubmitting = true;
-                showLoading();
-                
-                const checkedRadio = document.querySelector('input[name="choice"]:checked');
-                if (checkedRadio && currentQNo <= totalQuestions) {
-                    const selectedChoice = checkedRadio.value;
-                    fetch(`/api/student/test/${testId}/get_question/${currentQNo}`, {
-                        method: "POST",
-                        headers: {"Content-Type": "application/json"},
-                        body: JSON.stringify({ choice: selectedChoice, skip: false })
-                    })
-                    .then(() => {
-                        forceSubmitTimeUp();
-                    })
-                    .catch(() => {
-                        forceSubmitTimeUp();
-                    });
-                } else {
-                    forceSubmitTimeUp();
-                }
+                alert("制限時間が終了しました。結果を表示します。");
+                window.location.href = `/student/test/${testId}/submit`;
             }
             return;
         }
@@ -184,6 +180,25 @@
         }
     }
     
+    timerInterval = setInterval(updateTimer, 1000);
+    updateTimer();
+
+    // ========== 3. ローディング表示関数 ==========
+    function showLoading() {
+        const loadingDiv = document.getElementById('submit-loading');
+        if (loadingDiv) {
+            loadingDiv.style.display = 'flex';
+        }
+    }
+
+    function hideLoading() {
+        const loadingDiv = document.getElementById('submit-loading');
+        if (loadingDiv) {
+            loadingDiv.style.display = 'none';
+        }
+    }
+
+    // ========== 4. 提出関数 ==========
     function forceSubmitTimeUp() {
         fullscreenExitAllowed = true;
         if (fullscreenCheckInterval) clearInterval(fullscreenCheckInterval);
@@ -222,17 +237,13 @@
         }
     }
     
-    // 最終提出関数
     function finalSubmit() {
         showLoading();
         localStorage.removeItem("exam_end_time_id_" + testId);
         window.location.href = `/student/test/${testId}/submit`;
     }
-    
-    let timerInterval = setInterval(updateTimer, 1000);
-    updateTimer();
 
-    // ========== 2. 問題読み込み関数 ==========
+    // ========== 5. 問題読み込み関数 ==========
     function loadQuestion(qNo) {
         let now = new Date().getTime();
         if (endTime && now >= endTime) {
@@ -269,6 +280,7 @@
                 } else {
                     nextBtn.innerHTML = `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
                 }
+                nextBtn.disabled = false;
 
                 const container = document.getElementById("choices-container");
                 container.innerHTML = "";
@@ -298,33 +310,35 @@
         if(activeLabel) activeLabel.classList.add('selected-choice');
     }
 
-    // ========== 3. 解答保存 ==========
+    // ========== 6. 解答保存 ==========
     function submitAnswer(isSkip) {
         let selectedChoice = "";
-        const checkedRadio = document.querySelector('input[name="choice"]:checked');
-        if (checkedRadio) {
-            selectedChoice = checkedRadio.value;
+        if (!isSkip) {
+            const checkedRadio = document.querySelector('input[name="choice"]:checked');
+            if (!checkedRadio && currentQNo <= totalQuestions) {
+                alert("選択肢を選ぶか、わからない場合は「あとで解く/Skip」を押してください。");
+                return;
+            }
+            if (checkedRadio) selectedChoice = checkedRadio.value;
         }
 
         const nextBtn = document.getElementById("next-btn");
-        const skipBtn = document.querySelector('button[onclick="submitAnswer(true)"]');
-        if (nextBtn) nextBtn.disabled = true;
-        if (skipBtn) skipBtn.disabled = true;
-
-        if (currentQNo >= totalQuestions) {
-            showLoading();
-        }
+        nextBtn.disabled = true;
+        nextBtn.innerHTML = '保存中...';
 
         fetch(`/api/student/test/${testId}/get_question/${currentQNo}`, {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({ choice: selectedChoice, skip: isSkip })
         })
-        .then(res => res.json())
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`HTTP error! status: ${res.status}`);
+            }
+            return res.json();
+        })
         .then(data => {
-            if (nextBtn) nextBtn.disabled = false;
-            if (skipBtn) skipBtn.disabled = false;
-            
+            nextBtn.disabled = false;
             if (currentQNo >= totalQuestions) {
                 finalSubmit();
             } else {
@@ -332,18 +346,14 @@
             }
         })
         .catch(error => {
-            if (nextBtn) nextBtn.disabled = false;
-            if (skipBtn) skipBtn.disabled = false;
             console.error("Error:", error);
-            if (currentQNo >= totalQuestions) {
-                finalSubmit();
-            } else {
-                loadQuestion(currentQNo + 1);
-            }
+            nextBtn.disabled = false;
+            nextBtn.innerHTML = `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
+            alert("通信エラーが発生しました。もう一度お試しください。");
         });
     }
 
-    // ========== 4. ナビゲーション ==========
+    // ========== 7. ナビゲーション ==========
     function renderNavigation(statusList) {
         const container = document.getElementById("nav-buttons-container");
         container.innerHTML = "";
@@ -368,7 +378,7 @@
         });
     }
 
-    // ========== 5. 全画面モード ==========
+    // ========== 8. 全画面モード ==========
     function startExamFullscreen() {
         let docElm = document.documentElement;
         if (docElm.requestFullscreen) {
@@ -387,37 +397,54 @@
         }
     }
 
-    function startFullscreenWatch() {
-        if (fullscreenCheckInterval) clearInterval(fullscreenCheckInterval);
-        fullscreenCheckInterval = setInterval(() => {
-            const examActive = localStorage.getItem("exam_end_time_id_" + testId);
-            if (!examActive) {
-                if (fullscreenCheckInterval) clearInterval(fullscreenCheckInterval);
-                return;
-            }
+function startFullscreenWatch() {
+    if (fullscreenCheckInterval) clearInterval(fullscreenCheckInterval);
+    
+    fullscreenCheckInterval = setInterval(() => {
+        const examActive = localStorage.getItem("exam_end_time_id_" + testId);
+        if (!examActive) {
+            if (fullscreenCheckInterval) clearInterval(fullscreenCheckInterval);
+            return;
+        }
+        
+        if (!document.fullscreenElement && sessionStorage.getItem("fullscreen_active") === "true") {
+            fullscreenExitCount++;
             
-            if (!document.fullscreenElement && sessionStorage.getItem("fullscreen_active") === "true") {
-                if (!fullscreenExitAllowed) {
-                    const userConfirmed = confirm("警告：全画面モードが解除されました。試験を続行するには「OK」を押して再度全画面モードに切り替えてください。\n「キャンセル」を押すと不正行為として記録されます。");
-                    if (userConfirmed) {
-                        document.documentElement.requestFullscreen().catch(e => console.log(e));
-                    } else {
-                        clearInterval(fullscreenCheckInterval);
-                        localStorage.removeItem("exam_end_time_id_" + testId);
-                        fetch(`/student/test/${testId}/cheated`, { method: "POST" })
-                        .then(() => {
-                            alert("試験を終了します。");
-                            window.location.href = "/student_dashboard";
-                        });
-                    }
+            if (fullscreenExitCount === 1) {
+                alert("⚠️ 全画面モードが解除されました。試験を続行するには「OK」を押して全画面に戻してください。");
+                document.documentElement.requestFullscreen().catch(e => {
+                    alert("全画面に戻せませんでした。ブラウザの設定を確認してください。");
+                });
+            }
+            else if (fullscreenExitCount === 2) {
+                alert("⚠️⚠️ 全画面モードが再度解除されました。これ以上解除されると試験が強制終了されます。");
+                document.documentElement.requestFullscreen().catch(e => {
+                    alert("全画面に戻せませんでした。");
+                });
+            }
+            else {
+                clearInterval(fullscreenCheckInterval);
+                localStorage.removeItem("exam_end_time_id_" + testId);
+                sessionStorage.removeItem("fullscreen_active");
+                
+                if (confirm("❌ 全画面モードが複数回解除されました。不正行為とみなされ、試験を強制終了します。\n「OK」で終了、「キャンセル」で続行（最後のチャンス）")) {
+                    fetch(`/student/test/${testId}/cheated`, { method: "POST" })
+                    .then(() => {
+                        alert("試験を強制終了しました。");
+                        window.location.href = "/student_dashboard";
+                    });
+                } else {
+                    fullscreenExitCount = 0;
+                    document.documentElement.requestFullscreen().catch(e => console.log(e));
                 }
             }
-        }, 3000);
-    }
+        }
+    }, 2000);
+}
 
     document.addEventListener("fullscreenchange", function() {
         if (!document.fullscreenElement) {
-            console.log("全画面解除されました");
+            console.log("全画面解除されました（カウント: " + (fullscreenExitCount + 1) + "回目）");
         } else {
             sessionStorage.setItem("fullscreen_active", "true");
             document.getElementById("fullscreen-blocker").style.display = "none";
@@ -433,7 +460,7 @@
         }
     }
 
-    // ========== 6. ページ離脱防止 ==========
+    // ========== 9. ページ離脱防止 ==========
     window.addEventListener("beforeunload", function(e) {
         if (localStorage.getItem("exam_end_time_id_" + testId)) {
             e.preventDefault();
@@ -480,8 +507,27 @@
             return false;
         }
     });
-
-    // ========== 7. 初期化 ==========
+    // キーボードショートカットのブロック（追加）
+    document.addEventListener("keydown", function(e) {
+        if (localStorage.getItem("exam_end_time_id_" + testId)) {
+            if (e.key === "F11") {
+                e.preventDefault();
+                alert("全画面の切り替えは試験中は禁止されています。");
+                return false;
+            }
+            if (e.key === "Escape") {
+                e.preventDefault();
+                alert("全画面解除は試験中は禁止されています。");
+                return false;
+            }
+            if (e.ctrlKey && e.key === "w") {
+                e.preventDefault();
+                alert("タブを閉じることは試験中は禁止されています。");
+                return false;
+            }
+        }
+    });
+    // ========== 10. 初期化 ==========
     window.addEventListener("load", () => {
         checkFullscreenStatus();
         loadQuestion(1);

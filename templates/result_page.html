@@ -377,7 +377,16 @@
             <a href="{{ url_for('student_dashboard') }}" class="back-btn"><i class="fa-solid fa-arrow-left"></i> ダッシュボードに戻る</a>
         </div>
         <div class="text-end pt-2">
-            受験ID: #{{ res.id }} &nbsp;|&nbsp; 実施日時: {{ res.timestamp }} &nbsp;|&nbsp; 浦和専門学校 CBT System
+            受験ID: #{{ res.id }} &nbsp;|&nbsp; 実施日時: 
+            {% if res.timestamp %}
+                {% set dt = res.timestamp %}
+                {% if '+' not in dt and 'Z' not in dt %}
+                    {{ dt }} +9時間
+                {% else %}
+                    {{ dt }}
+                {% endif %}
+            {% endif %}
+            &nbsp;|&nbsp; 浦和専門学校 CBT System
         </div>
     </footer>
 </div>
