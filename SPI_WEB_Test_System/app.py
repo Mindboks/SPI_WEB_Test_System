@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.4.5
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.4.6
 
 # -*- coding: utf-8 -*-
 import os
@@ -752,21 +752,26 @@ def show_result(test_id, result_id):
             flash("結果が見つかりません。")
             return redirect(url_for('student_dashboard'))
         
-        # ★★★ タイムスタンプを日本時間に変換 ★★★
+        # ========== タイムスタンプを日本時間に変換 ==========
         if res.get('timestamp'):
             try:
                 from datetime import datetime
                 import pytz
                 utc_time = res['timestamp']
                 if isinstance(utc_time, str):
-                    utc_time = datetime.fromisoformat(utc_time.replace('Z', '+00:00'))
+                    # ISO形式のパース
+                    if '+' in utc_time or utc_time.endswith('Z'):
+                        utc_time = datetime.fromisoformat(utc_time.replace('Z', '+00:00'))
+                    else:
+                        utc_time = datetime.fromisoformat(utc_time)
                 jst = pytz.timezone('Asia/Tokyo')
                 if utc_time.tzinfo is None:
                     utc_time = utc_time.replace(tzinfo=pytz.UTC)
                 res['timestamp'] = utc_time.astimezone(jst).strftime('%Y-%m-%d %H:%M:%S')
+                print(f"【デバッグ】変換後: {res['timestamp']}")
             except Exception as e:
                 print(f"時間変換エラー: {e}")
-                # エラー時はそのまま表示
+                # エラー時はそのまま
 
         try:
             details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
@@ -1056,15 +1061,19 @@ def generate_motivation():
     else:
         return jsonify(get_sample_easy_motivation()), 200
 
+
 @app.route('/debug/time')
 def debug_time():
     import datetime
-    now = datetime.datetime.now()
+    import pytz
+    now_utc = datetime.datetime.now(pytz.UTC)
+    jst = pytz.timezone('Asia/Tokyo')
+    now_jst = now_utc.astimezone(jst)
     return jsonify({
-        'server_time': now.isoformat(),
-        'timezone': str(datetime.datetime.now().astimezone().tzinfo)
+        'utc': now_utc.isoformat(),
+        'jst': now_jst.isoformat(),
+        'pytz_installed': True
     })
-
 # ========== サーバー起動 ==========
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
