@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.5.8
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.5.9
 
 # -*- coding: utf-8 -*-
 import os
@@ -756,30 +756,32 @@ def show_result(test_id, result_id):
             flash("結果が見つかりません。")
             return redirect(url_for('student_dashboard'))
         
-        # ========== タイムスタンプを日本時間に変換 ==========
+        # ========== タイムスタンプを日本時間に変換（確実版） ==========
         if res.get('timestamp'):
             try:
                 from datetime import datetime, timedelta
-                utc_time = res['timestamp']
-                print(f"【デバッグ】元のtimestamp: {utc_time}")
-                
-                if isinstance(utc_time, str):
-                    if 'T' in utc_time:
-                        utc_time = datetime.fromisoformat(utc_time.replace('Z', '+00:00'))
-                    else:
-                        if '.' in utc_time:
-                            utc_time = datetime.strptime(utc_time, '%Y-%m-%d %H:%M:%S.%f')
-                        else:
-                            utc_time = datetime.strptime(utc_time, '%Y-%m-%d %H:%M:%S')
-                
-                if utc_time.tzinfo is None:
-                    import pytz
-                    utc_time = pytz.UTC.localize(utc_time)
-                
                 import pytz
+                
+                # UTC文字列をパース
+                utc_str = str(res['timestamp'])
+                print(f"【デバッグ】元のtimestamp: {utc_str}")
+                
+                if '.' in utc_str:
+                    utc_time = datetime.strptime(utc_str, '%Y-%m-%d %H:%M:%S.%f')
+                else:
+                    utc_time = datetime.strptime(utc_str, '%Y-%m-%d %H:%M:%S')
+                
+                # UTCとして認識
+                utc_time = utc_time.replace(tzinfo=pytz.UTC)
+                
+                # 日本時間に変換
                 jst = pytz.timezone('Asia/Tokyo')
-                res['timestamp'] = utc_time.astimezone(jst).strftime('%Y-%m-%d %H:%M:%S')
+                jst_time = utc_time.astimezone(jst)
+                
+                # 文字列に変換
+                res['timestamp'] = jst_time.strftime('%Y-%m-%d %H:%M:%S')
                 print(f"【デバッグ】変換後: {res['timestamp']}")
+                
             except Exception as e:
                 print(f"【デバッグ】変換エラー: {e}")
                 import traceback
@@ -805,6 +807,7 @@ def show_result(test_id, result_id):
         traceback.print_exc()
         flash("結果の表示中にエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
+
 
 @app.route('/student/test/<int:test_id>/cheated', methods=['POST'])
 def cheated_test(test_id):
