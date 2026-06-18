@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.6.4
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.6.5
 
 # -*- coding: utf-8 -*-
 import os
@@ -564,8 +564,6 @@ def teacher_view_result(result_id):
 
 
 
-
-
 @app.route('/student_dashboard')
 def student_dashboard():
     if session.get('role') != 'student': 
@@ -696,16 +694,28 @@ def submit_test(test_id):
         
         print(f"【デバッグ】正解数: {correct_count}/{total_q}, スコア: {final_score}")
         
-        # タイムスタンプを日本時間で保存
-        from datetime import datetime, timedelta
-        now_utc = datetime.utcnow()
-        now_jst = now_utc + timedelta(hours=9)
+        # AIコメントを生成
+        ai_comment = generate_ai_comment_with_gemini(
+            score=final_score,
+            details_data=analysis,
+            student_name=session.get('user_name'),
+            test_name=test_name  # 取得済み
+        )
         
+        # 日本時間を取得
+        import pytz
+        from datetime import datetime
+        jst = pytz.timezone('Asia/Tokyo')
+        now_jst = datetime.now(jst)
+        
+        # ★★★ comment カラムに保存 ★★★
         cur.execute('''
-            INSERT INTO results (user_id, test_id, score, details, timestamp) 
-            VALUES (%s, %s, %s, %s, %s) RETURNING id
-        ''', (user_id, test_id, final_score, json.dumps(analysis), now_jst))
+            INSERT INTO results (user_id, test_id, score, details, comment, timestamp) 
+            VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
+        ''', (user_id, test_id, final_score, json.dumps(analysis), ai_comment, now_jst))
         
+
+
         result_id = cur.fetchone()['id']
         conn.commit()
         cur.close()
@@ -729,24 +739,27 @@ def submit_test(test_id):
         flash("採点処理中にエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
 
-# ========== 非同期AIコメント用 ==========
+## ========== 非同期AIコメント用（キャッシュ＋保存版） ==========
 @app.route('/api/result/<int:result_id>/ai_comment', methods=['GET'])
 def api_get_ai_comment(result_id):
-    """AIコメントだけを非同期で返すAPI"""
-    if session.get('role') != 'student':
+    """AIコメントを非同期で返す（保存済みコメントがあればそれを返す）"""
+    # 先生と学生の両方がアクセスできるように
+    if session.get('role') not in ['student', 'teacher']:
         return jsonify({'error': 'Unauthorized'}), 401
     
     conn = None
     try:
         conn = get_db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # ★★★ コメントを取得（すでに保存されていればそれを使う） ★★★
         cur.execute('''
             SELECT r.*, u.name as student_name, t.name as test_name
             FROM results r
             JOIN users u ON r.user_id = u.id
             JOIN tests t ON r.test_id = t.id
-            WHERE r.id = %s AND r.user_id = %s
-        ''', (result_id, session.get('user_id')))
+            WHERE r.id = %s
+        ''', (result_id,))
         res = cur.fetchone()
         cur.close()
         conn.close()
@@ -754,6 +767,12 @@ def api_get_ai_comment(result_id):
         if not res:
             return jsonify({'error': 'Not found'}), 404
         
+        # ★★★ 保存済みコメントがあればそれを返す（再生成しない） ★★★
+        if res.get('comment'):
+            print(f"【キャッシュ】保存済みコメントを返します")
+            return jsonify({'comment': res['comment']})
+        
+        # コメントがない場合のみ生成（初回のみ）
         details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
         
         comment = generate_ai_comment_with_gemini(
@@ -762,6 +781,15 @@ def api_get_ai_comment(result_id):
             student_name=res['student_name'],
             test_name=res['test_name']
         )
+        
+        # ★★★ 生成したコメントをDBに保存 ★★★
+        conn2 = get_db()
+        cur2 = conn2.cursor()
+        cur2.execute('UPDATE results SET comment = %s WHERE id = %s', (comment, result_id))
+        conn2.commit()
+        cur2.close()
+        conn2.close()
+        
         return jsonify({'comment': comment})
         
     except Exception as e:
