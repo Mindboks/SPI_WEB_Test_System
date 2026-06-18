@@ -244,65 +244,68 @@
     }
 
     // ========== 5. 問題読み込み関数 ==========
-    function loadQuestion(qNo) {
-        let now = new Date().getTime();
-        if (endTime && now >= endTime) {
-            alert("制限時間が過ぎました。自動提出します。");
-            forceSubmit();
-            return;
-        }
-        
-        currentQNo = qNo;
-        fetch(`/api/student/test/${testId}/get_question/${qNo}`)
-            .then(res => res.json())
-            .then(data => {
-                if(data.error) {
-                    window.location.href = `/student/test/${testId}/submit`;
-                    return;
-                }
-
-                document.getElementById("q-no-badge").innerText = `問 ${data.q_no} / 全 ${totalQuestions} 問`;
-                document.getElementById("category-badge").innerText = `カテゴリ: ${data.category}`;
-                document.getElementById("question-text").innerHTML = data.question;
-
-                const targetArea = document.getElementById("target-area");
-                const targetBox = document.getElementById("target-box");
-                if (data.target && data.target.trim() !== "") {
-                    targetBox.innerText = data.target;
-                    targetArea.style.display = "block";
-                } else {
-                    targetArea.style.display = "none";
-                }
-
-                const nextBtn = document.getElementById("next-btn");
-                if (qNo === totalQuestions) {
-                    nextBtn.innerHTML = `最終解答を記録して提出画面へ <i class="bi bi-box-arrow-up"></i>`;
-                } else {
-                    nextBtn.innerHTML = `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
-                }
-                nextBtn.disabled = false;
-
-                const container = document.getElementById("choices-container");
-                container.innerHTML = "";
-                Object.keys(data.choices).forEach(key => {
-                    const num = key.replace('a', '');
-                    const choiceText = data.choices[key];
-                    const isChecked = data.current_answer === num;
-
-                    const col = document.createElement("div");
-                    col.className = "col";
-                    col.innerHTML = `
-                        <label class="btn btn-outline-secondary w-100 text-start p-2 rounded-3 shadow-sm choice-label d-flex align-items-center ${isChecked ? 'selected-choice' : ''}" id="label-choice-${num}">
-                            <input type="radio" name="choice" value="${num}" class="form-check-input me-3 style-radio" ${isChecked ? 'checked' : ''} onclick="highlightChoice('${num}')">
-                            <span class="fw-bold text-dark" style="font-size: 1.05rem;">[${num}] ${choiceText}</span>
-                        </label>
-                    `;
-                    container.appendChild(col);
-                });
-
-                renderNavigation(data.status_list);
-            });
+function loadQuestion(qNo) {
+    // ★★★ 全画面解除カウントをリセット（ページ遷移ごとにリセット） ★★★
+    fullscreenExitCount = 0;
+    
+    let now = new Date().getTime();
+    if (endTime && now >= endTime) {
+        alert("制限時間が過ぎました。自動提出します。");
+        forceSubmit();
+        return;
     }
+    
+    currentQNo = qNo;
+    fetch(`/api/student/test/${testId}/get_question/${qNo}`)
+        .then(res => res.json())
+        .then(data => {
+            if(data.error) {
+                window.location.href = `/student/test/${testId}/submit`;
+                return;
+            }
+
+            document.getElementById("q-no-badge").innerText = `問 ${data.q_no} / 全 ${totalQuestions} 問`;
+            document.getElementById("category-badge").innerText = `カテゴリ: ${data.category}`;
+            document.getElementById("question-text").innerHTML = data.question;
+
+            const targetArea = document.getElementById("target-area");
+            const targetBox = document.getElementById("target-box");
+            if (data.target && data.target.trim() !== "") {
+                targetBox.innerText = data.target;
+                targetArea.style.display = "block";
+            } else {
+                targetArea.style.display = "none";
+            }
+
+            const nextBtn = document.getElementById("next-btn");
+            if (qNo === totalQuestions) {
+                nextBtn.innerHTML = `最終解答を記録して提出画面へ <i class="bi bi-box-arrow-up"></i>`;
+            } else {
+                nextBtn.innerHTML = `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
+            }
+            nextBtn.disabled = false;
+
+            const container = document.getElementById("choices-container");
+            container.innerHTML = "";
+            Object.keys(data.choices).forEach(key => {
+                const num = key.replace('a', '');
+                const choiceText = data.choices[key];
+                const isChecked = data.current_answer === num;
+
+                const col = document.createElement("div");
+                col.className = "col";
+                col.innerHTML = `
+                    <label class="btn btn-outline-secondary w-100 text-start p-2 rounded-3 shadow-sm choice-label d-flex align-items-center ${isChecked ? 'selected-choice' : ''}" id="label-choice-${num}">
+                        <input type="radio" name="choice" value="${num}" class="form-check-input me-3 style-radio" ${isChecked ? 'checked' : ''} onclick="highlightChoice('${num}')">
+                        <span class="fw-bold text-dark" style="font-size: 1.05rem;">[${num}] ${choiceText}</span>
+                    </label>
+                `;
+                container.appendChild(col);
+            });
+
+            renderNavigation(data.status_list);
+        });
+}
 
     function highlightChoice(num) {
         document.querySelectorAll('.choice-label').forEach(el => el.classList.remove('selected-choice'));
