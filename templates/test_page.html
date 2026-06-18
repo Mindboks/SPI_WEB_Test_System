@@ -1,7 +1,20 @@
 {% extends "layout.html" %}
 {% block title %}試験中 / Exam - {{ test.name }}{% endblock %}
 {% block content %}
-
+<style>
+    /* 既存のスタイルに追加 */
+    .btn-saving {
+        background-color: #dc3545 !important;
+        border-color: #dc3545 !important;
+        color: white !important;
+        opacity: 0.8;
+        cursor: wait;
+    }
+    .btn-saving:hover {
+        background-color: #c82333 !important;
+        border-color: #bd2130 !important;
+    }
+</style>
 <!-- ローディングオーバーレイ -->
 <div id="submit-loading" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 10001; display: none; flex-direction: column; justify-content: center; align-items: center; color: white;">
     <div class="spinner-border text-success mb-4" style="width: 4rem; height: 4rem;" role="status">
@@ -325,8 +338,11 @@ function loadQuestion(qNo) {
         }
 
         const nextBtn = document.getElementById("next-btn");
+        
+        // ★★★ ボタンを赤色に変更 ★★★
         nextBtn.disabled = true;
-        nextBtn.innerHTML = '保存中...';
+        nextBtn.classList.add('btn-saving');
+        nextBtn.innerHTML = '⏳ 保存中...';
 
         fetch(`/api/student/test/${testId}/get_question/${currentQNo}`, {
             method: "POST",
@@ -340,7 +356,12 @@ function loadQuestion(qNo) {
             return res.json();
         })
         .then(data => {
+            // ★★★ ボタンを元に戻す ★★★
             nextBtn.disabled = false;
+            nextBtn.classList.remove('btn-saving');
+            nextBtn.classList.add('btn-success');
+            nextBtn.innerHTML = `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
+            
             if (currentQNo >= totalQuestions) {
                 finalSubmit();
             } else {
@@ -349,7 +370,10 @@ function loadQuestion(qNo) {
         })
         .catch(error => {
             console.error("Error:", error);
+            // ★★★ エラー時も元に戻す ★★★
             nextBtn.disabled = false;
+            nextBtn.classList.remove('btn-saving');
+            nextBtn.classList.add('btn-success');
             nextBtn.innerHTML = `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
             alert("通信エラーが発生しました。もう一度お試しください。");
         });
