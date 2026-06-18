@@ -387,7 +387,7 @@ function loadQuestion(qNo) {
             docElm.requestFullscreen().then(() => {
                 document.getElementById("fullscreen-blocker").style.display = "none";
                 sessionStorage.setItem("fullscreen_active", "true");
-                startFullscreenWatch();
+                startFullscreenWatch();  // 監視開始（ただし何もしない）
             }).catch(err => {
                 document.getElementById("fullscreen-blocker").style.display = "none";
                 sessionStorage.setItem("fullscreen_active", "true");
@@ -399,34 +399,12 @@ function loadQuestion(qNo) {
         }
     }
 
-// ========== 8. 全画面モード（強制終了を完全無効化） ==========
-
-function startFullscreenWatch() {
-    if (fullscreenCheckInterval) clearInterval(fullscreenCheckInterval);
-    
-    fullscreenCheckInterval = setInterval(() => {
-        const examActive = localStorage.getItem("exam_end_time_id_" + testId);
-        if (!examActive) {
-            if (fullscreenCheckInterval) clearInterval(fullscreenCheckInterval);
-            return;
-        }
-        
-        if (!document.fullscreenElement && sessionStorage.getItem("fullscreen_active") === "true") {
-            fullscreenExitCount++;
-            console.log(`【全画面】解除されました（${fullscreenExitCount}回目）`);
-            
-            // 3回ごとに警告（強制終了なし）
-            if (fullscreenExitCount % 3 === 0) {
-                alert(`⚠️ 全画面モードが${fullscreenExitCount}回解除されました。試験を続行するには全画面に戻してください。`);
-            }
-            
-            // 全画面に戻す
-            document.documentElement.requestFullscreen().catch(e => {
-                console.log("全画面復帰失敗:", e);
-            });
-        }
-    }, 5000);
-}
+    // ========== 全画面監視（完全無効化） ==========
+    function startFullscreenWatch() {
+        // ★★★ 監視を完全に無効化（何もしない） ★★★
+        console.log("【全画面監視】完全に無効化されています");
+        return;
+    }
 
     document.addEventListener("fullscreenchange", function() {
         if (!document.fullscreenElement) {
