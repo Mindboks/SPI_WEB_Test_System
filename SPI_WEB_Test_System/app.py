@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.4.7
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.4.8
 
 # -*- coding: utf-8 -*-
 import os
@@ -732,19 +732,23 @@ def show_result(test_id, result_id):
         conn = get_db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
+        # ★★★ 修正：SQLで日本時間に変換 ★★★
         cur.execute('''
-            SELECT r.*, u.name as student_name 
+            SELECT 
+                r.id,
+                r.test_id,
+                r.user_id,
+                r.score,
+                r.details,
+                r.comment,
+                (r.timestamp AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Tokyo') AS timestamp,
+                u.name as student_name 
             FROM results r 
             JOIN users u ON r.user_id = u.id 
             WHERE r.id = %s AND r.user_id = %s
         ''', (result_id, session.get('user_id')))
         
         res = cur.fetchone()
-        
-        # ★★★ デバッグ1: データ取得確認 ★★★
-        print(f"【デバッグ1】res取得: {res is not None}")
-        if res:
-            print(f"【デバッグ1】timestamp: {res.get('timestamp')}")
         
         cur.execute('SELECT name FROM tests WHERE id = %s', (test_id,))
         test = cur.fetchone()
@@ -757,37 +761,30 @@ def show_result(test_id, result_id):
             flash("結果が見つかりません。")
             return redirect(url_for('student_dashboard'))
         
-        # ========== タイムスタンプを日本時間に変換 ==========
-        # ★★★ デバッグ2: 変換開始 ★★★
-        print("【デバッグ2】変換開始")
+        # ========== ★★★ ここが重要！ ★★★ ==========
+        # タイムスタンプを日本時間に変換
+        print("【デバッグ】変換処理開始")  # ← この行がログに出るか？
         
         if res.get('timestamp'):
-            print(f"【デバッグ3】timestamp存在: {res['timestamp']}")
+            print(f"【デバッグ】元のtimestamp: {res['timestamp']}")
             try:
                 from datetime import datetime
                 import pytz
                 utc_time = res['timestamp']
-                print(f"【デバッグ4】utc_time: {utc_time}, 型: {type(utc_time)}")
-                
                 if isinstance(utc_time, str):
-                    # ISO形式のパース
                     if '+' in utc_time or utc_time.endswith('Z'):
                         utc_time = datetime.fromisoformat(utc_time.replace('Z', '+00:00'))
                     else:
                         utc_time = datetime.fromisoformat(utc_time)
-                    print(f"【デバッグ5】パース後: {utc_time}")
-                
                 jst = pytz.timezone('Asia/Tokyo')
                 if utc_time.tzinfo is None:
                     utc_time = utc_time.replace(tzinfo=pytz.UTC)
                 res['timestamp'] = utc_time.astimezone(jst).strftime('%Y-%m-%d %H:%M:%S')
-                print(f"【デバッグ6】変換後: {res['timestamp']}")
+                print(f"【デバッグ】変換後: {res['timestamp']}")
             except Exception as e:
-                print(f"【デバッグエラー】時間変換エラー: {e}")
+                print(f"【デバッグ】変換エラー: {e}")
                 import traceback
                 traceback.print_exc()
-        else:
-            print("【デバッグ3】timestampが空です")
 
         try:
             details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
