@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.6.9
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.7.0
 
 # -*- coding: utf-8 -*-
 import os
@@ -16,7 +16,33 @@ from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from apscheduler.schedulers.background import BackgroundScheduler
 
+# ========== Basic認証設定（urasen.com用） ==========
+from functools import wraps
+from flask import request, Response
 
+BASIC_AUTH_USERNAME = os.environ.get('BASIC_AUTH_USERNAME', 'urasen_admin')
+BASIC_AUTH_PASSWORD = os.environ.get('BASIC_AUTH_PASSWORD', 'Urasen2026!')
+
+def check_auth(username, password):
+    return username == BASIC_AUTH_USERNAME and password == BASIC_AUTH_PASSWORD
+
+def authenticate():
+    return Response(
+        '認証が必要です', 401,
+        {'WWW-Authenticate': 'Basic realm="Login Required"'}
+    )
+
+@app.before_request
+def check_basic_auth():
+    """urasen.com のみBasic認証を要求"""
+    if request.path.startswith('/static'):
+        return
+    
+    host = request.headers.get('Host', '')
+    if 'urasen.com' in host:
+        auth = request.authorization
+        if not auth or not check_auth(auth.username, auth.password):
+            return authenticate()
 
 # ========== Gemini設定（簡易版） ==========
 GEMINI_AVAILABLE = False
