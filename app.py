@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.5.9
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.6.0
 
 # -*- coding: utf-8 -*-
 import os
@@ -756,37 +756,9 @@ def show_result(test_id, result_id):
             flash("結果が見つかりません。")
             return redirect(url_for('student_dashboard'))
         
-        # ========== タイムスタンプを日本時間に変換（確実版） ==========
-        if res.get('timestamp'):
-            try:
-                from datetime import datetime, timedelta
-                import pytz
-                
-                # UTC文字列をパース
-                utc_str = str(res['timestamp'])
-                print(f"【デバッグ】元のtimestamp: {utc_str}")
-                
-                if '.' in utc_str:
-                    utc_time = datetime.strptime(utc_str, '%Y-%m-%d %H:%M:%S.%f')
-                else:
-                    utc_time = datetime.strptime(utc_str, '%Y-%m-%d %H:%M:%S')
-                
-                # UTCとして認識
-                utc_time = utc_time.replace(tzinfo=pytz.UTC)
-                
-                # 日本時間に変換
-                jst = pytz.timezone('Asia/Tokyo')
-                jst_time = utc_time.astimezone(jst)
-                
-                # 文字列に変換
-                res['timestamp'] = jst_time.strftime('%Y-%m-%d %H:%M:%S')
-                print(f"【デバッグ】変換後: {res['timestamp']}")
-                
-            except Exception as e:
-                print(f"【デバッグ】変換エラー: {e}")
-                import traceback
-                traceback.print_exc()
-
+        # ========== タイムスタンプはそのまま（すでに日本時間） ==========
+        # 変換は行わない
+        
         try:
             details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
         except json.JSONDecodeError:
