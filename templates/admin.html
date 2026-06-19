@@ -66,7 +66,22 @@
             </div>
         </div>
     </div>
-
+    <!-- 新規試験登録フォームの下に追加 -->
+    <div class="card-footer bg-light py-2">
+        <div class="d-flex justify-content-between align-items-center flex-wrap">
+            <span class="small text-muted">
+                <i class="bi bi-people-fill me-1"></i> 学生管理
+            </span>
+            <div class="d-flex gap-2">
+                <button onclick="showDummyMessage('登録')" class="btn btn-sm btn-outline-success">
+                    <i class="bi bi-person-plus-fill"></i> 学生登録
+                </button>
+                <button onclick="showDummyMessage('削除')" class="btn btn-sm btn-outline-danger">
+                    <i class="bi bi-person-x-fill"></i> 学生削除
+                </button>
+            </div>
+        </div>
+    </div>
     <!-- 右側：テスト一覧 + 受験結果 -->
     <div class="col-md-8 mb-4">
 
@@ -196,4 +211,10 @@
 
     </div>
 </div>
+
+<script>
+function showDummyMessage(action) {
+    alert('🔒 サーバー管理者のみ変更ができます。');
+}
+</script>
 {% endblock %}
