@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.7.1
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.7.2
 
 # -*- coding: utf-8 -*-
 import os
@@ -11,6 +11,7 @@ import time
 import datetime
 import psycopg2
 import threading
+import random
 from collections import OrderedDict
 from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
@@ -623,6 +624,7 @@ def take_test(test_id):
     session.pop('answers', None)
     session.pop('current_test_id', None)
     session.pop('test_start_time', None)
+    session.pop('question_order', None)  # ← 追加
     
     session['answers'] = {}
     session['current_test_id'] = test_id
@@ -641,9 +643,18 @@ def take_test(test_id):
         
         print(f"【デバッグ】テスト開始: test_id={test_id}, duration={test.get('duration')}")
         
-        cur.execute('SELECT COUNT(*) as total FROM questions WHERE test_id = %s', (test_id,))
-        total_data = cur.fetchone()
-        total_q = total_data['total'] if total_data else 0
+        # ★★★ 問題を全て取得してシャッフル ★★★
+        cur.execute('SELECT q_no FROM questions WHERE test_id = %s ORDER BY q_no', (test_id,))
+        questions = cur.fetchall()
+        q_numbers = [q['q_no'] for q in questions]
+        
+        # ランダムにシャッフル（学生ごとに異なる順序）
+        import random
+        random.shuffle(q_numbers)
+        
+        # セッションに保存
+        session['question_order'] = q_numbers
+        total_q = len(q_numbers)
         
         cur.close()
         conn.close()
@@ -664,6 +675,7 @@ def take_test(test_id):
         traceback.print_exc()
         flash("システムエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
+    
 
 @app.route('/student/test/<int:test_id>/submit', methods=['GET', 'POST'])
 def submit_test(test_id):
@@ -682,6 +694,12 @@ def submit_test(test_id):
         conn = get_db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
+        # ★★★ テスト名を取得 ★★★
+        cur.execute('SELECT name FROM tests WHERE id = %s', (test_id,))
+        test_result = cur.fetchone()
+        test_name = test_result['name'] if test_result else "不明なテスト"
+        
+        # ★★★ 全問題を取得 ★★★
         cur.execute("SELECT id, q_no, category, answer FROM questions WHERE test_id = %s ORDER BY q_no", (test_id,))
         questions = cur.fetchall()
         
@@ -693,14 +711,18 @@ def submit_test(test_id):
         correct_count = 0
         genre_stats = {}
         
+        # ★★★ シャッフルされた順序を取得 ★★★
+        question_order = session.get('question_order', [])
+        
         for q in questions:
-            q_no = str(q['q_no'])
+            q_no = str(q['q_no'])  # 実際の問題番号（元の番号）
             category = q['category'] or '未分類'
             
             if category not in genre_stats:
                 genre_stats[category] = {'correct': 0, 'total': 0}
             genre_stats[category]['total'] += 1
             
+            # ★★★ 元の問題番号で回答を取得 ★★★
             user_answer = user_answers.get(q_no, '')
             correct_answer = str(q['answer']) if q['answer'] else ''
             
@@ -722,12 +744,14 @@ def submit_test(test_id):
         
         print(f"【デバッグ】正解数: {correct_count}/{total_q}, スコア: {final_score}")
         
-        # AIコメントを生成
+        # ============================================================
+        # AIコメントを生成して保存
+        # ============================================================
         ai_comment = generate_ai_comment_with_gemini(
             score=final_score,
             details_data=analysis,
             student_name=session.get('user_name'),
-            test_name=test_name  # 取得済み
+            test_name=test_name
         )
         
         # 日本時間を取得
@@ -742,8 +766,6 @@ def submit_test(test_id):
             VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
         ''', (user_id, test_id, final_score, json.dumps(analysis), ai_comment, now_jst))
         
-
-
         result_id = cur.fetchone()['id']
         conn.commit()
         cur.close()
@@ -752,6 +774,7 @@ def submit_test(test_id):
         session.pop(session_key, None)
         session.pop('current_test_id', None)
         session.pop('test_start_time', None)
+        session.pop('question_order', None)  # ★★★ 追加 ★★★
         
         flash(f'試験を提出しました。得点: {final_score}点 / {total_q}問中{correct_count}問正解')
         
@@ -910,6 +933,16 @@ def api_get_question(test_id, q_no):
         session[session_key] = {}
         session.modified = True
     
+    # ★★★ シャッフルされた順序を取得 ★★★
+    question_order = session.get('question_order', [])
+    
+    # q_no は表示上の問題番号（1〜N）
+    # 実際の問題番号を取得
+    if question_order and 1 <= q_no <= len(question_order):
+        actual_q_no = question_order[q_no - 1]
+    else:
+        actual_q_no = q_no
+    
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     
@@ -917,7 +950,8 @@ def api_get_question(test_id, q_no):
         data = request.get_json() or {}
         ans_dict = session[session_key]
         
-        q_no_str = str(q_no)
+        # ★★★ 実際の問題番号で保存 ★★★
+        q_no_str = str(actual_q_no)
         if q_no_str not in ans_dict or ans_dict[q_no_str] == "":
             if data.get('skip'):
                 ans_dict[q_no_str] = ""
@@ -925,35 +959,43 @@ def api_get_question(test_id, q_no):
                 ans_dict[q_no_str] = str(data.get('choice', ''))
             session[session_key] = ans_dict
             session.modified = True
-            print(f"【保存】ユーザー{user_id}, 問題{q_no}, 回答: {ans_dict[q_no_str]}")
+            print(f"【保存】ユーザー{user_id}, 表示問題{q_no}(実際{actual_q_no}), 回答: {ans_dict[q_no_str]}")
         else:
-            print(f"【警告】ユーザー{user_id}, 問題{q_no}は既に回答済み")
+            print(f"【警告】ユーザー{user_id}, 表示問題{q_no}(実際{actual_q_no})は既に回答済み")
 
-    cur.execute('SELECT * FROM questions WHERE test_id = %s AND q_no = %s', (test_id, q_no))
+    # ★★★ 実際の問題番号でデータを取得 ★★★
+    cur.execute('SELECT * FROM questions WHERE test_id = %s AND q_no = %s', (test_id, actual_q_no))
     q = cur.fetchone()
-    cur.execute('SELECT COUNT(*) as cnt FROM questions WHERE test_id = %s', (test_id,))
-    total_q = cur.fetchone()['cnt']
     cur.close()
     conn.close()
     
     if not q:
         return jsonify({'error': 'Question not found'}), 404
 
+    # ★★★ ステータスリストは表示用の番号で作成 ★★★
     ans_dict = session.get(session_key, {})
     status_list = []
+    total_q = len(question_order) if question_order else 0
+    
     for i in range(1, total_q + 1):
+        # 表示用の番号（i）に対応する実際の問題番号
+        if question_order and i <= len(question_order):
+            actual = question_order[i - 1]
+            is_answered = str(actual) in ans_dict and ans_dict[str(actual)] != ""
+        else:
+            is_answered = False
         status_list.append({
             'q_no': i,
-            'is_answered': str(i) in ans_dict and ans_dict[str(i)] != ""
+            'is_answered': is_answered
         })
 
     return jsonify({
-        'q_no': q['q_no'],
+        'q_no': q_no,  # 表示用の問題番号
         'category': q['category'],
         'question': q['question'],
         'target': q.get('target', ''),
         'choices': {f'a{i}': q[f'a{i}'] for i in range(1, 11) if q.get(f'a{i}')},
-        'current_answer': ans_dict.get(str(q_no), ''),
+        'current_answer': ans_dict.get(str(actual_q_no), ''),
         'status_list': status_list
     })
 
