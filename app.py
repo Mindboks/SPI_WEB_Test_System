@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.7.2
+#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.7.3
 
 # -*- coding: utf-8 -*-
 import os
@@ -60,8 +60,8 @@ app.config.update(
 from functools import wraps
 from flask import request, Response
 
-BASIC_AUTH_USERNAME = os.environ.get('BASIC_AUTH_USERNAME', 'urasen_admin')
-BASIC_AUTH_PASSWORD = os.environ.get('BASIC_AUTH_PASSWORD', 'Urasen2026!')
+BASIC_AUTH_USERNAME = os.environ.get('BASIC_AUTH_USERNAME', '')
+BASIC_AUTH_PASSWORD = os.environ.get('BASIC_AUTH_PASSWORD', '')
 
 def check_auth(username, password):
     return username == BASIC_AUTH_USERNAME and password == BASIC_AUTH_PASSWORD
