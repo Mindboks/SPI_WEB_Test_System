@@ -1,6 +1,4 @@
 #2026-4-11~2026-6-7 version2.9.5
-APP_VERSION = "0.7.7"
-
 # -*- coding: utf-8 -*-
 import os
 import csv
@@ -18,8 +16,10 @@ from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from apscheduler.schedulers.background import BackgroundScheduler
 
+# ========== 更新履歴バージョン ==========
+APP_VERSION = "0.8.0"
 
-# ========== Gemini設定（簡易版） ==========
+# ========== Gemini設定 ==========
 GEMINI_AVAILABLE = False
 gemini_model = None
 
@@ -542,7 +542,7 @@ def teacher_admin():
         cur.close()
         conn.close()
     except Exception as e:
-        print(f"データ取得エラー: {e}")
+        print(f"CSVデータ取得エラー: {e}")
         
     return render_template('admin.html', tests=tests, results=results, classes=classes)
 
@@ -691,8 +691,8 @@ def submit_test(test_id):
     session_key = f"answers_{user_id}_{test_id}"
     user_answers = session.get(session_key, {})
     
-    print(f"【デバッグ】提出開始: test_id={test_id}, user_id={user_id}")
-    print(f"【デバッグ】回答数: {len(user_answers)}")
+    # print(f"【デバッグ】提出開始: test_id={test_id}, user_id={user_id}")
+    # print(f"【デバッグ】回答数: {len(user_answers)}")
     
     conn = None
     try:
@@ -747,7 +747,7 @@ def submit_test(test_id):
         analysis = {"labels": labels, "scores": scores}
         final_score = int((correct_count / total_q) * 100)
         
-        print(f"【デバッグ】正解数: {correct_count}/{total_q}, スコア: {final_score}")
+        # print(f"【デバッグ】正解数: {correct_count}/{total_q}, スコア: {final_score}")
         
         # ============================================================
         # AIコメントを生成して保存
@@ -789,7 +789,7 @@ def submit_test(test_id):
         if conn:
             conn.rollback()
             conn.close()
-        print(f"【エラー】submit_test: {e}")
+        # print(f"【エラー】submit_test: {e}")
         import traceback
         traceback.print_exc()
         flash("採点処理中にエラーが発生しました。")

@@ -563,45 +563,6 @@
             });
         }
 
-        // 3. フッターの時間を日本時間に変換
-        // (function() {
-        //     const jstElement = document.getElementById('jst-time');
-        //     if (jstElement) {
-        //         const utcStr = jstElement.textContent.trim();
-        //         console.log('【デバッグ】フッター時間変換前:', utcStr);
-                
-        //         if (utcStr) {
-        //             try {
-        //                 // UTC文字列をパース
-        //                 let dateStr = utcStr.replace(' ', 'T');
-        //                 if (!dateStr.includes('Z') && !dateStr.includes('+')) {
-        //                     dateStr += 'Z';
-        //                 }
-        //                 const utcDate = new Date(dateStr);
-                        
-        //                 // 日本時間に変換（+9時間）
-        //                 const jstDate = new Date(utcDate.getTime() + 9 * 60 * 60 * 1000);
-                        
-        //                 // フォーマット
-        //                 const pad = (n) => String(n).padStart(2, '0');
-        //                 const y = jstDate.getFullYear();
-        //                 const m = pad(jstDate.getMonth() + 1);
-        //                 const d = pad(jstDate.getDate());
-        //                 const h = pad(jstDate.getHours());
-        //                 const min = pad(jstDate.getMinutes());
-        //                 const s = pad(jstDate.getSeconds());
-                        
-        //                 const jstStr = `${y}-${m}-${d} ${h}:${min}:${s}`;
-        //                 jstElement.textContent = jstStr;
-        //                 console.log('【デバッグ】フッター時間変換後:', jstStr);
-        //             } catch(e) {
-        //                 console.log('【デバッグ】フッター時間変換エラー:', e);
-        //             }
-        //         }
-        //     }
-        // })();
-        // ========== ★★★ ここまで追加 ★★★ ==========
-
 
 
         console.log('【デバッグ】result_page.html 読み込み完了');
