@@ -17,7 +17,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # ========== 更新履歴バージョン ==========
-APP_VERSION = "0.8.5"
+APP_VERSION = "0.8.6"
 
 # ========== Gemini設定 ==========
 GEMINI_AVAILABLE = False

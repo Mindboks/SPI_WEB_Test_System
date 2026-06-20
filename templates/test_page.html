@@ -108,6 +108,13 @@
     </button>
 </div>
 
+<!-- ★★★ トースト通知 ★★★ -->
+<div id="toast-message" style="position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: white; padding: 15px 30px; border-radius: 10px; z-index: 99999; display: none; max-width: 90%; text-align: center; font-size: 1rem; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+    <span id="toast-text"></span>
+    <button onclick="hideToast()" style="background: none; border: none; color: #ff6b6b; margin-left: 15px; font-size: 1.2rem; cursor: pointer;">✕</button>
+</div>
+
+
 <style>
     .choice-label:hover {
         background-color: #f1f3f5 !important;
@@ -196,11 +203,13 @@ let fullscreenWatchStarted = false;
     timerInterval = setInterval(updateTimer, 1000);
     updateTimer();
 
+
     // ========== 3. ローディング表示関数 ==========
     function showLoading() {
         const loadingDiv = document.getElementById('submit-loading');
         if (loadingDiv) {
             loadingDiv.style.display = 'flex';
+            loadingDiv.style.zIndex = '10001';  // 最前面に表示
             const msgEl = document.getElementById('loading-message');
             if (msgEl) {
                 msgEl.innerHTML = '📊 テスト結果を集計中...';
@@ -210,12 +219,15 @@ let fullscreenWatchStarted = false;
                 subEl.textContent = 'しばらくお待ちください（数秒かかります）';
             }
         }
+        // ★★★ 背景クリックやEscキーで閉じられないようにする ★★★
+        document.body.style.overflow = 'hidden';  // スクロール禁止
     }
 
     function showLoadingWithMessage(message, subMessage) {
         const loadingDiv = document.getElementById('submit-loading');
         if (loadingDiv) {
             loadingDiv.style.display = 'flex';
+            loadingDiv.style.zIndex = '10001';
             const msgEl = document.getElementById('loading-message');
             if (msgEl) {
                 msgEl.innerHTML = message.replace(/\n/g, '<br>');
@@ -225,61 +237,58 @@ let fullscreenWatchStarted = false;
                 subEl.textContent = subMessage;
             }
         }
+        document.body.style.overflow = 'hidden';
     }
 
-function hideLoading() {
-    const loadingDiv = document.getElementById('submit-loading');
-    if (loadingDiv) {
-        loadingDiv.style.display = 'none';
+    function hideLoading() {
+        const loadingDiv = document.getElementById('submit-loading');
+        if (loadingDiv) {
+            loadingDiv.style.display = 'none';
+        }
+        document.body.style.overflow = '';  // スクロール解除
+}
+
+// ========== 4. 提出関数 ==========
+function forceSubmit() {
+    if (isSubmitting) return;
+    isSubmitting = true;
+    
+    // ★★★ alertを使わず、すぐにローディング表示 ★★★
+    showLoadingWithMessage('📊 テスト結果を集計中...\nしばらくお待ちください');
+    
+    fullscreenExitAllowed = true;
+    const checkedRadio = document.querySelector('input[name="choice"]:checked');
+    if (checkedRadio && currentQNo <= totalQuestions) {
+        const selectedChoice = checkedRadio.value;
+        fetch(`/api/student/test/${testId}/get_question/${currentQNo}`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ choice: selectedChoice, skip: false })
+        })
+        .then(() => {
+            finalSubmit();
+        })
+        .catch(() => {
+            finalSubmit();
+        });
+    } else {
+        finalSubmit();
     }
 }
 
-    // ========== 4. 提出関数 ==========
-    function forceSubmitTimeUp() {
-        fullscreenExitAllowed = true;
-        if (fullscreenCheckInterval) clearInterval(fullscreenCheckInterval);
-        alert("制限時間が終了しました。結果を表示します。");
-        localStorage.removeItem("exam_end_time_id_" + testId);
-        sessionStorage.removeItem("fullscreen_active");
-        window.location.href = `/student/test/${testId}/submit`;
-    }
+function finalSubmit() {
+    // ★★★ ローディングメッセージを表示（閉じられない） ★★★
+    showLoadingWithMessage('📊 結果を集計中...\nしばらくお待ちください');
     
-    function forceSubmit() {
-        if (isSubmitting) return;
-        isSubmitting = true;
-        
-        if (confirm('本当に試験を終了して提出しますか？')) {
-            showLoading();
-            fullscreenExitAllowed = true;
-            const checkedRadio = document.querySelector('input[name="choice"]:checked');
-            if (checkedRadio && currentQNo <= totalQuestions) {
-                const selectedChoice = checkedRadio.value;
-                fetch(`/api/student/test/${testId}/get_question/${currentQNo}`, {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({ choice: selectedChoice, skip: false })
-                })
-                .then(() => {
-                    finalSubmit();
-                })
-                .catch(() => {
-                    finalSubmit();
-                });
-            } else {
-                finalSubmit();
-            }
-        } else {
-            isSubmitting = false;
-        }
-    }
+    localStorage.removeItem("exam_end_time_id_" + testId);
     
-    function finalSubmit() {
-        showLoading();
-        localStorage.removeItem("exam_end_time_id_" + testId);
+    // ★★★ 少し遅延させてから遷移 ★★★
+    setTimeout(() => {
         window.location.href = `/student/test/${testId}/submit`;
-    }
+    }, 800);
+}
 
-    // ========== 5. 問題読み込み関数 ==========
+// ========== 5. 問題読み込み関数 ==========
 function loadQuestion(qNo) {
     // ★★★ 全画面解除カウントをリセット（ページ遷移ごとにリセット） ★★★
     fullscreenExitCount = 0;
@@ -361,15 +370,14 @@ function loadQuestion(qNo) {
         if (!isSkip) {
             const checkedRadio = document.querySelector('input[name="choice"]:checked');
             if (!checkedRadio && currentQNo <= totalQuestions) {
-                alert("選択肢を選ぶか、わからない場合は「あとで解く/Skip」を押してください。");
+                // ★★★ alertをやめて、画面上に表示 ★★★
+                showToast('⚠️ 選択肢を選ぶか、わからない場合は「あとで解く/Skip」を押してください。');
                 return;
             }
             if (checkedRadio) selectedChoice = checkedRadio.value;
         }
 
         const nextBtn = document.getElementById("next-btn");
-        
-        // ★★★ ボタンを無効化＆赤色に変更（長めに表示） ★★★
         nextBtn.disabled = true;
         nextBtn.classList.remove('btn-success');
         nextBtn.classList.add('btn-saving');
@@ -387,16 +395,9 @@ function loadQuestion(qNo) {
             return res.json();
         })
         .then(data => {
-            // ★★★ 次の問題を読み込んでからボタンを戻す ★★★
             if (currentQNo >= totalQuestions) {
-                // 最終問題の場合はそのまま提出
-                nextBtn.disabled = false;
-                nextBtn.classList.remove('btn-saving');
-                nextBtn.classList.add('btn-success');
-                nextBtn.innerHTML = `最終解答を記録して提出画面へ <i class="bi bi-box-arrow-up"></i>`;
                 finalSubmit();
             } else {
-                // ★★★ 次の問題を先に読み込む ★★★
                 loadQuestionWithDelay(currentQNo + 1);
             }
         })
@@ -406,7 +407,8 @@ function loadQuestion(qNo) {
             nextBtn.classList.remove('btn-saving');
             nextBtn.classList.add('btn-success');
             nextBtn.innerHTML = `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
-            alert("通信エラーが発生しました。もう一度お試しください。");
+            // ★★★ alertをやめて、画面上に表示 ★★★
+            showToast('⚠️ 通信エラーが発生しました。もう一度お試しください。');
         });
     }
 
@@ -473,6 +475,33 @@ function loadQuestion(qNo) {
             sessionStorage.setItem("fullscreen_active", "true");
         }
     }
+
+
+    // ========== 9. トースト通知関数 ==========
+    function showToast(message, duration = 3000) {
+        const toast = document.getElementById('toast-message');
+        const text = document.getElementById('toast-text');
+        if (toast && text) {
+            text.textContent = message;
+            toast.style.display = 'block';
+            // 自動で消える
+            clearTimeout(window.toastTimer);
+            window.toastTimer = setTimeout(() => {
+                toast.style.display = 'none';
+            }, duration);
+        }
+    }
+
+    function hideToast() {
+        const toast = document.getElementById('toast-message');
+        if (toast) {
+            toast.style.display = 'none';
+            clearTimeout(window.toastTimer);
+        }
+    }
+
+
+
 
     // ========== 全画面監視（完全無効化） ==========
     function startFullscreenWatch() {
