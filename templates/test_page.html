@@ -18,13 +18,12 @@
 
 <!-- ローディングオーバーレイ -->
 <div id="submit-loading" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 10001; display: none; flex-direction: column; justify-content: center; align-items: center; color: white; cursor: default; pointer-events: none;">
-    <!-- ↑ pointer-events: none; でクリックを無効化 -->
     <div class="spinner-border text-success mb-4" style="width: 4rem; height: 4rem;" role="status">
         <span class="visually-hidden">Loading...</span>
     </div>
-    <h3 class="fw-bold text-white" id="loading-message">📊 テスト結果を集計中...</h3>
-    <p class="text-muted mt-2" id="loading-sub-message">しばらくお待ちください（数秒かかります）</p>
-    <div class="progress mt-3" style="width: 250px;">
+    <h2 class="fw-bold text-white" id="loading-message" style="font-size: 2rem;">しばらくお待ちください</h2>
+    <p class="text-muted mt-3" id="loading-sub-message" style="font-size: 1.2rem;">結果を表示しています...</p>
+    <div class="progress mt-4" style="width: 300px;">
         <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" style="width: 100%"></div>
     </div>
 </div>
@@ -150,59 +149,59 @@ let timerInterval = null;
 let fullscreenExitCount = 0;
 let fullscreenWatchStarted = false;
 
-    // ========== 2. タイマー制御（durationはテンプレートから直接取得） ==========
-    // durationは app.py から渡された値を使用
-    let durationMinutes = parseInt("{{ duration }}");
+// ========== 2. タイマー制御（durationはテンプレートから直接取得） ==========
+let durationMinutes = parseInt("{{ duration }}");
+
+console.log("【デバッグ】durationMinutes:", durationMinutes);
+console.log("【デバッグ】totalQuestions:", totalQuestions);
+
+if (durationMinutes <= 0 || isNaN(durationMinutes)) {
+    durationMinutes = 30;
+    console.warn("【警告】durationが不正な値のため、デフォルトの30分を使用します");
+}
+
+let endTime = localStorage.getItem("exam_end_time_id_" + testId);
+if (!endTime) {
+    endTime = new Date().getTime() + durationMinutes * 60 * 1000;
+    localStorage.setItem("exam_end_time_id_" + testId, endTime);
+    console.log("【デバッグ】タイマー開始: " + durationMinutes + "分");
+} else {
+    console.log("【デバッグ】既存タイマー使用");
+}
+
+function updateTimer() {
+    let now = new Date().getTime();
+    let distance = endTime - now;
     
-    // デバッグログ
-    console.log("【デバッグ】durationMinutes:", durationMinutes);
-    console.log("【デバッグ】totalQuestions:", totalQuestions);
-
-    // タイマー初期化（durationMinutesが0以下の場合はデフォルト30分）
-    if (durationMinutes <= 0 || isNaN(durationMinutes)) {
-        durationMinutes = 30;
-        console.warn("【警告】durationが不正な値のため、デフォルトの30分を使用します");
-    }
-
-    let endTime = localStorage.getItem("exam_end_time_id_" + testId);
-    if (!endTime) {
-        endTime = new Date().getTime() + durationMinutes * 60 * 1000;
-        localStorage.setItem("exam_end_time_id_" + testId, endTime);
-        console.log("【デバッグ】タイマー開始: " + durationMinutes + "分");
-    } else {
-        console.log("【デバッグ】既存タイマー使用");
-    }
-
-    function updateTimer() {
-        let now = new Date().getTime();
-        let distance = endTime - now;
+    if (distance <= 0 && !timeUpFlag) {
+        timeUpFlag = true;
+        clearInterval(timerInterval);
+        localStorage.removeItem("exam_end_time_id_" + testId);
         
-        if (distance <= 0 && !timeUpFlag) {
-            timeUpFlag = true;
-            clearInterval(timerInterval);
-            localStorage.removeItem("exam_end_time_id_" + testId);
-            
-            if (!isSubmitting) {
-                isSubmitting = true;
-                alert("制限時間が終了しました。結果を表示します。");
+        if (!isSubmitting) {
+            isSubmitting = true;
+            // ★★★ alertを削除してローディング表示 ★★★
+            showLoadingWithMessage('しばらくお待ちください', '結果を表示しています...');
+            setTimeout(() => {
                 window.location.href = `/student/test/${testId}/submit`;
-            }
-            return;
+            }, 800);
         }
-        
-        let minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-        let seconds = Math.floor((distance % (1000 * 60)) / 1000);
-        let timeStr = (minutes < 10 ? "0" : "") + minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
-        document.getElementById("timer").innerHTML = timeStr;
-        
-        if (distance <= 60000) {
-            document.getElementById("timer").style.color = "#ff4444";
-            document.getElementById("timer").style.fontWeight = "bold";
-        }
+        return;
     }
     
-    timerInterval = setInterval(updateTimer, 1000);
-    updateTimer();
+    let minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+    let seconds = Math.floor((distance % (1000 * 60)) / 1000);
+    let timeStr = (minutes < 10 ? "0" : "") + minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+    document.getElementById("timer").innerHTML = timeStr;
+    
+    if (distance <= 60000) {
+        document.getElementById("timer").style.color = "#ff4444";
+        document.getElementById("timer").style.fontWeight = "bold";
+    }
+}
+
+timerInterval = setInterval(updateTimer, 1000);
+updateTimer();
 
 
     // ========== 3. ローディング表示関数 ==========
@@ -211,18 +210,17 @@ let fullscreenWatchStarted = false;
         if (loadingDiv) {
             loadingDiv.style.display = 'flex';
             loadingDiv.style.zIndex = '10001';
+            loadingDiv.style.pointerEvents = 'none';  // クリック無効
             const msgEl = document.getElementById('loading-message');
             if (msgEl) {
-                msgEl.innerHTML = '📊 テスト結果を集計中...';
+                msgEl.textContent = 'しばらくお待ちください';
             }
             const subEl = document.getElementById('loading-sub-message');
             if (subEl) {
-                subEl.textContent = 'しばらくお待ちください（数秒かかります）';
+                subEl.textContent = '結果を表示しています...';
             }
-            // ★★★ クリックで閉じられないようにする ★★★
-            loadingDiv.onclick = null;
         }
-        document.body.style.overflow = 'hidden';  // スクロール禁止
+        document.body.style.overflow = 'hidden';
     }
 
     function showLoadingWithMessage(message, subMessage) {
@@ -230,58 +228,58 @@ let fullscreenWatchStarted = false;
         if (loadingDiv) {
             loadingDiv.style.display = 'flex';
             loadingDiv.style.zIndex = '10001';
-            loadingDiv.onclick = null;  // ★★★ クリック無効化 ★★★
+            loadingDiv.style.pointerEvents = 'none';
             const msgEl = document.getElementById('loading-message');
             if (msgEl) {
-                msgEl.innerHTML = message.replace(/\n/g, '<br>');
+                msgEl.textContent = message || 'しばらくお待ちください';
             }
             const subEl = document.getElementById('loading-sub-message');
-            if (subEl && subMessage) {
-                subEl.textContent = subMessage;
+            if (subEl) {
+                subEl.textContent = subMessage || '結果を表示しています...';
             }
         }
         document.body.style.overflow = 'hidden';
     }
 
-    // ========== 4. 提出関数 ==========
-    function forceSubmit() {
-        if (isSubmitting) return;
-        isSubmitting = true;
-        
-        // ★★★ alertをやめて、すぐにローディング表示 ★★★
-        showLoadingWithMessage('📊 テスト結果を集計中...\nしばらくお待ちください');
-        
-        fullscreenExitAllowed = true;
-        const checkedRadio = document.querySelector('input[name="choice"]:checked');
-        if (checkedRadio && currentQNo <= totalQuestions) {
-            const selectedChoice = checkedRadio.value;
-            fetch(`/api/student/test/${testId}/get_question/${currentQNo}`, {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({ choice: selectedChoice, skip: false })
-            })
-            .then(() => {
-                finalSubmit();
-            })
-            .catch(() => {
-                finalSubmit();
-            });
-        } else {
+// ========== 4. 提出関数 ==========
+function forceSubmit() {
+    if (isSubmitting) return;
+    isSubmitting = true;
+    
+    // ★★★ ローディング表示（閉じられない） ★★★
+    showLoadingWithMessage('しばらくお待ちください', '結果を表示しています...');
+    
+    fullscreenExitAllowed = true;
+    const checkedRadio = document.querySelector('input[name="choice"]:checked');
+    if (checkedRadio && currentQNo <= totalQuestions) {
+        const selectedChoice = checkedRadio.value;
+        fetch(`/api/student/test/${testId}/get_question/${currentQNo}`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ choice: selectedChoice, skip: false })
+        })
+        .then(() => {
             finalSubmit();
-        }
+        })
+        .catch(() => {
+            finalSubmit();
+        });
+    } else {
+        finalSubmit();
     }
+}
 
-    function finalSubmit() {
-        // ★★★ ローディングメッセージを表示（閉じられない） ★★★
-        showLoadingWithMessage('📊 結果を集計中...\nしばらくお待ちください');
-        
-        localStorage.removeItem("exam_end_time_id_" + testId);
-        
-        // ★★★ ローディングを表示したまま、強制的に遷移 ★★★
-        setTimeout(() => {
-            window.location.href = `/student/test/${testId}/submit`;
-        }, 800);
-    }
+function finalSubmit() {
+    // ★★★ ローディング表示（閉じられない） ★★★
+    showLoadingWithMessage('しばらくお待ちください', '結果を表示しています...');
+    
+    localStorage.removeItem("exam_end_time_id_" + testId);
+    
+    // ★★★ 確実に遷移するまで表示し続ける ★★★
+    setTimeout(() => {
+        window.location.href = `/student/test/${testId}/submit`;
+    }, 1000);  // 1秒後に遷移（確実に表示される）
+}
 
     // ========== 5. 問題読み込み関数 ==========
     function loadQuestion(qNo) {
