@@ -15,16 +15,14 @@
         border-color: #bd2130 !important;
     }
 </style>
+
 <!-- ローディングオーバーレイ -->
 <div id="submit-loading" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 10001; display: none; flex-direction: column; justify-content: center; align-items: center; color: white;">
     <div class="spinner-border text-success mb-4" style="width: 4rem; height: 4rem;" role="status">
         <span class="visually-hidden">Loading...</span>
     </div>
-    <h3 class="fw-bold text-white">
-        <span id="loading-phase1">📊 テスト結果を集計中...</span>
-        <span id="loading-phase2" style="display: none;">🤖 AIコメントを生成中...</span>
-    </h3>
-    <p class="text-muted mt-2">しばらくお待ちください（数秒かかります）</p>
+    <h3 class="fw-bold text-white" id="loading-message">📊 テスト結果を集計中...</h3>
+    <p class="text-muted mt-2" id="loading-sub-message">しばらくお待ちください（数秒かかります）</p>
     <div class="progress mt-3" style="width: 250px;">
         <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" style="width: 100%"></div>
     </div>
@@ -203,22 +201,38 @@ let fullscreenWatchStarted = false;
         const loadingDiv = document.getElementById('submit-loading');
         if (loadingDiv) {
             loadingDiv.style.display = 'flex';
-            // フェーズ1を表示
-            document.getElementById('loading-phase1').style.display = 'inline';
-            document.getElementById('loading-phase2').style.display = 'none';
-            // 3秒後にフェーズ2に切り替え
-            setTimeout(() => {
-                document.getElementById('loading-phase1').style.display = 'none';
-                document.getElementById('loading-phase2').style.display = 'inline';
-            }, 3000);
+            const msgEl = document.getElementById('loading-message');
+            if (msgEl) {
+                msgEl.innerHTML = '📊 テスト結果を集計中...';
+            }
+            const subEl = document.getElementById('loading-sub-message');
+            if (subEl) {
+                subEl.textContent = 'しばらくお待ちください（数秒かかります）';
+            }
         }
     }
-    function hideLoading() {
+
+    function showLoadingWithMessage(message, subMessage) {
         const loadingDiv = document.getElementById('submit-loading');
         if (loadingDiv) {
-            loadingDiv.style.display = 'none';
+            loadingDiv.style.display = 'flex';
+            const msgEl = document.getElementById('loading-message');
+            if (msgEl) {
+                msgEl.innerHTML = message.replace(/\n/g, '<br>');
+            }
+            const subEl = document.getElementById('loading-sub-message');
+            if (subEl && subMessage) {
+                subEl.textContent = subMessage;
+            }
         }
     }
+
+function hideLoading() {
+    const loadingDiv = document.getElementById('submit-loading');
+    if (loadingDiv) {
+        loadingDiv.style.display = 'none';
+    }
+}
 
     // ========== 4. 提出関数 ==========
     function forceSubmitTimeUp() {
@@ -343,14 +357,6 @@ function loadQuestion(qNo) {
 
     // ========== 6. 解答保存 ==========
     function submitAnswer(isSkip) {
-        const nextBtn = document.getElementById("next-btn");
-        
-        // ★★★ ボタンが無効化されていたら何もしない（二重送信防止） ★★★
-        if (nextBtn.disabled) {
-            console.log("【防止】保存中のため、クリックを無視しました");
-            return;
-        }
-        
         let selectedChoice = "";
         if (!isSkip) {
             const checkedRadio = document.querySelector('input[name="choice"]:checked');
@@ -361,7 +367,9 @@ function loadQuestion(qNo) {
             if (checkedRadio) selectedChoice = checkedRadio.value;
         }
 
-        // ボタンを無効化＆赤色に変更
+        const nextBtn = document.getElementById("next-btn");
+        
+        // ★★★ ボタンを無効化＆赤色に変更（長めに表示） ★★★
         nextBtn.disabled = true;
         nextBtn.classList.remove('btn-success');
         nextBtn.classList.add('btn-saving');
@@ -379,21 +387,17 @@ function loadQuestion(qNo) {
             return res.json();
         })
         .then(data => {
-            // ボタンを元に戻す
-            nextBtn.disabled = false;
-            nextBtn.classList.remove('btn-saving');
-            nextBtn.classList.add('btn-success');
-            
+            // ★★★ 次の問題を読み込んでからボタンを戻す ★★★
             if (currentQNo >= totalQuestions) {
+                // 最終問題の場合はそのまま提出
+                nextBtn.disabled = false;
+                nextBtn.classList.remove('btn-saving');
+                nextBtn.classList.add('btn-success');
                 nextBtn.innerHTML = `最終解答を記録して提出画面へ <i class="bi bi-box-arrow-up"></i>`;
-            } else {
-                nextBtn.innerHTML = `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
-            }
-            
-            if (currentQNo >= totalQuestions) {
                 finalSubmit();
             } else {
-                loadQuestion(currentQNo + 1);
+                // ★★★ 次の問題を先に読み込む ★★★
+                loadQuestionWithDelay(currentQNo + 1);
             }
         })
         .catch(error => {
@@ -404,6 +408,26 @@ function loadQuestion(qNo) {
             nextBtn.innerHTML = `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
             alert("通信エラーが発生しました。もう一度お試しください。");
         });
+    }
+
+    // ★★★ 新しい関数：問題読み込み後にボタンを戻す ★★★
+    function loadQuestionWithDelay(qNo) {
+        const nextBtn = document.getElementById("next-btn");
+        
+        // 問題を読み込む
+        loadQuestion(qNo);
+        
+        // ★★★ 少し遅延させてからボタンを戻す（問題表示後にボタンが戻る） ★★★
+        setTimeout(() => {
+            nextBtn.disabled = false;
+            nextBtn.classList.remove('btn-saving');
+            nextBtn.classList.add('btn-success');
+            if (qNo === totalQuestions) {
+                nextBtn.innerHTML = `最終解答を記録して提出画面へ <i class="bi bi-box-arrow-up"></i>`;
+            } else {
+                nextBtn.innerHTML = `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
+            }
+        }, 600); // 0.6秒遅延（問題表示後にボタンが戻る）
     }
 
     // ========== 7. ナビゲーション ==========
