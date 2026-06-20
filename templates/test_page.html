@@ -17,7 +17,8 @@
 </style>
 
 <!-- ローディングオーバーレイ -->
-<div id="submit-loading" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 10001; display: none; flex-direction: column; justify-content: center; align-items: center; color: white;">
+<div id="submit-loading" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 10001; display: none; flex-direction: column; justify-content: center; align-items: center; color: white; cursor: default; pointer-events: none;">
+    <!-- ↑ pointer-events: none; でクリックを無効化 -->
     <div class="spinner-border text-success mb-4" style="width: 4rem; height: 4rem;" role="status">
         <span class="visually-hidden">Loading...</span>
     </div>
@@ -209,7 +210,7 @@ let fullscreenWatchStarted = false;
         const loadingDiv = document.getElementById('submit-loading');
         if (loadingDiv) {
             loadingDiv.style.display = 'flex';
-            loadingDiv.style.zIndex = '10001';  // 最前面に表示
+            loadingDiv.style.zIndex = '10001';
             const msgEl = document.getElementById('loading-message');
             if (msgEl) {
                 msgEl.innerHTML = '📊 テスト結果を集計中...';
@@ -218,8 +219,9 @@ let fullscreenWatchStarted = false;
             if (subEl) {
                 subEl.textContent = 'しばらくお待ちください（数秒かかります）';
             }
+            // ★★★ クリックで閉じられないようにする ★★★
+            loadingDiv.onclick = null;
         }
-        // ★★★ 背景クリックやEscキーで閉じられないようにする ★★★
         document.body.style.overflow = 'hidden';  // スクロール禁止
     }
 
@@ -228,6 +230,7 @@ let fullscreenWatchStarted = false;
         if (loadingDiv) {
             loadingDiv.style.display = 'flex';
             loadingDiv.style.zIndex = '10001';
+            loadingDiv.onclick = null;  // ★★★ クリック無効化 ★★★
             const msgEl = document.getElementById('loading-message');
             if (msgEl) {
                 msgEl.innerHTML = message.replace(/\n/g, '<br>');
@@ -240,123 +243,115 @@ let fullscreenWatchStarted = false;
         document.body.style.overflow = 'hidden';
     }
 
-    function hideLoading() {
-        const loadingDiv = document.getElementById('submit-loading');
-        if (loadingDiv) {
-            loadingDiv.style.display = 'none';
-        }
-        document.body.style.overflow = '';  // スクロール解除
-}
-
-// ========== 4. 提出関数 ==========
-function forceSubmit() {
-    if (isSubmitting) return;
-    isSubmitting = true;
-    
-    // ★★★ alertを使わず、すぐにローディング表示 ★★★
-    showLoadingWithMessage('📊 テスト結果を集計中...\nしばらくお待ちください');
-    
-    fullscreenExitAllowed = true;
-    const checkedRadio = document.querySelector('input[name="choice"]:checked');
-    if (checkedRadio && currentQNo <= totalQuestions) {
-        const selectedChoice = checkedRadio.value;
-        fetch(`/api/student/test/${testId}/get_question/${currentQNo}`, {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({ choice: selectedChoice, skip: false })
-        })
-        .then(() => {
-            finalSubmit();
-        })
-        .catch(() => {
-            finalSubmit();
-        });
-    } else {
-        finalSubmit();
-    }
-}
-
-function finalSubmit() {
-    // ★★★ ローディングメッセージを表示（閉じられない） ★★★
-    showLoadingWithMessage('📊 結果を集計中...\nしばらくお待ちください');
-    
-    localStorage.removeItem("exam_end_time_id_" + testId);
-    
-    // ★★★ 少し遅延させてから遷移 ★★★
-    setTimeout(() => {
-        window.location.href = `/student/test/${testId}/submit`;
-    }, 800);
-}
-
-// ========== 5. 問題読み込み関数 ==========
-function loadQuestion(qNo) {
-    // ★★★ 全画面解除カウントをリセット（ページ遷移ごとにリセット） ★★★
-    fullscreenExitCount = 0;
-
-    // ★★★ 問題読み込み時にボタンを確実に有効化 ★★★
-    const nextBtn = document.getElementById("next-btn");
-    nextBtn.disabled = false;
-    nextBtn.classList.remove('btn-saving');
-    nextBtn.classList.add('btn-success');    
-    
-    let now = new Date().getTime();
-    if (endTime && now >= endTime) {
-        alert("制限時間が過ぎました。自動提出します。");
-        forceSubmit();
-        return;
-    }
-    
-    currentQNo = qNo;
-    fetch(`/api/student/test/${testId}/get_question/${qNo}`)
-        .then(res => res.json())
-        .then(data => {
-            if(data.error) {
-                window.location.href = `/student/test/${testId}/submit`;
-                return;
-            }
-
-            document.getElementById("q-no-badge").innerText = `問 ${data.q_no} / 全 ${totalQuestions} 問`;
-            document.getElementById("category-badge").innerText = `カテゴリ: ${data.category}`;
-            document.getElementById("question-text").innerHTML = data.question;
-
-            const targetArea = document.getElementById("target-area");
-            const targetBox = document.getElementById("target-box");
-            if (data.target && data.target.trim() !== "") {
-                targetBox.innerText = data.target;
-                targetArea.style.display = "block";
-            } else {
-                targetArea.style.display = "none";
-            }
-
-            const nextBtn = document.getElementById("next-btn");
-            if (qNo === totalQuestions) {
-                nextBtn.innerHTML = `最終解答を記録して提出画面へ <i class="bi bi-box-arrow-up"></i>`;
-            } else {
-                nextBtn.innerHTML = `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
-            }
-            nextBtn.disabled = false;
-
-            const container = document.getElementById("choices-container");
-            container.innerHTML = "";
-            Object.keys(data.choices).forEach(key => {
-                const num = key.replace('a', '');
-                const choiceText = data.choices[key];
-                const isChecked = data.current_answer === num;
-
-                const col = document.createElement("div");
-                col.className = "col";
-                col.innerHTML = `
-                    <label class="btn btn-outline-secondary w-100 text-start p-2 rounded-3 shadow-sm choice-label d-flex align-items-center ${isChecked ? 'selected-choice' : ''}" id="label-choice-${num}">
-                        <input type="radio" name="choice" value="${num}" class="form-check-input me-3 style-radio" ${isChecked ? 'checked' : ''} onclick="highlightChoice('${num}')">
-                        <span class="fw-bold text-dark" style="font-size: 1.05rem;">[${num}] ${choiceText}</span>
-                    </label>
-                `;
-                container.appendChild(col);
+    // ========== 4. 提出関数 ==========
+    function forceSubmit() {
+        if (isSubmitting) return;
+        isSubmitting = true;
+        
+        // ★★★ alertをやめて、すぐにローディング表示 ★★★
+        showLoadingWithMessage('📊 テスト結果を集計中...\nしばらくお待ちください');
+        
+        fullscreenExitAllowed = true;
+        const checkedRadio = document.querySelector('input[name="choice"]:checked');
+        if (checkedRadio && currentQNo <= totalQuestions) {
+            const selectedChoice = checkedRadio.value;
+            fetch(`/api/student/test/${testId}/get_question/${currentQNo}`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({ choice: selectedChoice, skip: false })
+            })
+            .then(() => {
+                finalSubmit();
+            })
+            .catch(() => {
+                finalSubmit();
             });
+        } else {
+            finalSubmit();
+        }
+    }
 
-            renderNavigation(data.status_list);
-        });
-}
+    function finalSubmit() {
+        // ★★★ ローディングメッセージを表示（閉じられない） ★★★
+        showLoadingWithMessage('📊 結果を集計中...\nしばらくお待ちください');
+        
+        localStorage.removeItem("exam_end_time_id_" + testId);
+        
+        // ★★★ ローディングを表示したまま、強制的に遷移 ★★★
+        setTimeout(() => {
+            window.location.href = `/student/test/${testId}/submit`;
+        }, 800);
+    }
+
+    // ========== 5. 問題読み込み関数 ==========
+    function loadQuestion(qNo) {
+        // ★★★ 全画面解除カウントをリセット（ページ遷移ごとにリセット） ★★★
+        fullscreenExitCount = 0;
+
+        // ★★★ 問題読み込み時にボタンを確実に有効化 ★★★
+        const nextBtn = document.getElementById("next-btn");
+        nextBtn.disabled = false;
+        nextBtn.classList.remove('btn-saving');
+        nextBtn.classList.add('btn-success');    
+        
+        let now = new Date().getTime();
+        if (endTime && now >= endTime) {
+            alert("制限時間が過ぎました。自動提出します。");
+            forceSubmit();
+            return;
+        }
+        
+        currentQNo = qNo;
+        fetch(`/api/student/test/${testId}/get_question/${qNo}`)
+            .then(res => res.json())
+            .then(data => {
+                if(data.error) {
+                    window.location.href = `/student/test/${testId}/submit`;
+                    return;
+                }
+
+                document.getElementById("q-no-badge").innerText = `問 ${data.q_no} / 全 ${totalQuestions} 問`;
+                document.getElementById("category-badge").innerText = `カテゴリ: ${data.category}`;
+                document.getElementById("question-text").innerHTML = data.question;
+
+                const targetArea = document.getElementById("target-area");
+                const targetBox = document.getElementById("target-box");
+                if (data.target && data.target.trim() !== "") {
+                    targetBox.innerText = data.target;
+                    targetArea.style.display = "block";
+                } else {
+                    targetArea.style.display = "none";
+                }
+
+                const nextBtn = document.getElementById("next-btn");
+                if (qNo === totalQuestions) {
+                    nextBtn.innerHTML = `最終解答を記録して提出画面へ <i class="bi bi-box-arrow-up"></i>`;
+                } else {
+                    nextBtn.innerHTML = `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
+                }
+                nextBtn.disabled = false;
+
+                const container = document.getElementById("choices-container");
+                container.innerHTML = "";
+                Object.keys(data.choices).forEach(key => {
+                    const num = key.replace('a', '');
+                    const choiceText = data.choices[key];
+                    const isChecked = data.current_answer === num;
+
+                    const col = document.createElement("div");
+                    col.className = "col";
+                    col.innerHTML = `
+                        <label class="btn btn-outline-secondary w-100 text-start p-2 rounded-3 shadow-sm choice-label d-flex align-items-center ${isChecked ? 'selected-choice' : ''}" id="label-choice-${num}">
+                            <input type="radio" name="choice" value="${num}" class="form-check-input me-3 style-radio" ${isChecked ? 'checked' : ''} onclick="highlightChoice('${num}')">
+                            <span class="fw-bold text-dark" style="font-size: 1.05rem;">[${num}] ${choiceText}</span>
+                        </label>
+                    `;
+                    container.appendChild(col);
+                });
+
+                renderNavigation(data.status_list);
+            });
+    }
 
     function highlightChoice(num) {
         document.querySelectorAll('.choice-label').forEach(el => el.classList.remove('selected-choice'));
