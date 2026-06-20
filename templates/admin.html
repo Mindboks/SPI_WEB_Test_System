@@ -73,23 +73,6 @@
                     </button>
                 </form>
             </div>
-            
-            <!-- ======================================================== -->
-            <!-- 学生管理                                                  -->
-            <!-- ======================================================== -->
-            <div class="card-footer bg-light py-2 border-top">
-                <div class="d-flex justify-content-between align-items-center flex-wrap">
-                    <span class="small text-muted">学生管理</span>
-                    <div class="d-flex gap-2">
-                        <button onclick="showDummyMessage('登録')" class="btn btn-sm btn-outline-success">
-                            <i class="bi bi-person-plus-fill"></i> 学生登録
-                        </button>
-                        <button onclick="showDummyMessage('削除')" class="btn btn-sm btn-outline-danger">
-                            <i class="bi bi-person-x-fill"></i> 学生削除
-                        </button>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <!-- ========================================================== -->
@@ -97,7 +80,7 @@
         <!-- ========================================================== -->
         <div class="card shadow-sm border-0 bg-white rounded-3 mt-3">
             <div class="card-header bg-secondary text-white py-1 px-3">
-                <small class="fw-bold">システム更新履歴</small>
+                <small class="fw-bold">System Update History</small>
             </div>
             <div class="card-body p-0" style="max-height: 300px; overflow-y: auto;">
                 <table class="table table-sm table-borderless mb-0" style="font-family: 'Courier New', monospace; font-size: 0.7rem;">
@@ -105,6 +88,8 @@
                         <!-- ★ 更新履歴 ★ -->
                         
                         <tr><td class="text-nowrap" style="color: #000;">2026-06-21 19:34</td><td>軽微なデザイン調整</td></tr>
+                        <tr><td class="text-nowrap" style="color: #000;">2026-06-20 19:20</td><td>バージョンをapp.pyから自動取得するように修正</td></tr>
+                        <tr><td class="text-nowrap" style="color: #000;">2026-06-20 19:12</td><td>フッターの戻り先をログイン状況に応じて切り替え</td></tr>
                         <tr><td class="text-nowrap" style="color: #000;">2026-06-20 15:05</td><td>ローディング表示を「しばらくお待ちください」に統一、タイムアップ時も対応</td></tr>
                         <tr><td class="text-nowrap" style="color: #000;">2026-06-20 14:35</td><td>トースト通知を追加（alertの代わり）</td></tr>
                         <tr><td class="text-nowrap" style="color: #000;">2026-06-20 14:10</td><td>alertを削除し、ローディング表示を閉じられないように修正</td></tr>
@@ -124,9 +109,25 @@
                     </tbody>
                 </table>
             </div>
+            <!-- ======================================================== -->
+            <!-- 学生管理                                                  -->
+            <!-- ======================================================== -->
+            <div class="card-footer bg-light py-2 border-top">
+                <div class="d-flex justify-content-between align-items-center flex-wrap">
+                    <span class="small text-muted">Student Management</span>
+                    <div class="d-flex gap-2">
+                        <button onclick="showDummyMessage('登録')" class="btn btn-sm btn-outline-success">
+                            <i class="bi bi-person-plus-fill"></i>  Add Student
+                        </button>
+                        <button onclick="showDummyMessage('削除')" class="btn btn-sm btn-outline-danger">
+                            <i class="bi bi-person-x-fill"></i> Delete Student
+                        </button>
+                    </div>
+                </div>
+            </div>
             <div class="card-footer bg-light py-1 text-center border-top">
                 <small class="text-muted" style="font-size: 0.65rem;">
-                    <!-- ★ コメント用 ★ -->
+                    ver.{{ app_version }} | | Developer: Ikeda
                 </small>
             </div>
         </div>

@@ -370,11 +370,25 @@
     <div id="chart-data" 
          data-labels='{{ details.labels | tojson | safe }}' 
          data-scores='{{ details.scores | tojson | safe }}' 
-         style="display:none;"></div>
+         style="display:none;">
+    </div>
     
     <footer class="footer-bar">
         <div>
-            <a href="{{ url_for('student_dashboard') }}" class="back-btn"><i class="fa-solid fa-arrow-left"></i> ダッシュボードに戻る</a>
+            <!-- ★★★ セッションに応じて戻り先を切り替え（安全対策付き） ★★★ -->
+            {% if session.get('role') == 'teacher' %}
+                <a href="{{ url_for('teacher_admin') }}" class="back-btn">
+                    <i class="fa-solid fa-arrow-left"></i> 管理画面に戻る
+                </a>
+            {% elif session.get('role') == 'student' %}
+                <a href="{{ url_for('student_dashboard') }}" class="back-btn">
+                    <i class="fa-solid fa-arrow-left"></i> ダッシュボードに戻る
+                </a>
+            {% else %}
+                <a href="{{ url_for('login') }}" class="back-btn">
+                    <i class="fa-solid fa-arrow-left"></i> ログイン画面へ
+                </a>
+            {% endif %}
         </div>
         <div class="text-end pt-2">
             受験ID: #{{ res.id }} &nbsp;|&nbsp; 実施日時: {{ res.timestamp }} &nbsp;|&nbsp; CBT System
