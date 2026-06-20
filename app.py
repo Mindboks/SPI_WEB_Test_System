@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-7 version2.9.5
+#2026-4-11~2026-6-20 version2.9.5
 # -*- coding: utf-8 -*-
 import os
 import csv
@@ -16,8 +16,6 @@ from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from apscheduler.schedulers.background import BackgroundScheduler
 
-# ========== 更新履歴バージョン ==========
-APP_VERSION = "0.8.9"
 
 # ========== Gemini設定 ==========
 GEMINI_AVAILABLE = False
@@ -55,6 +53,15 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=1800,
     SESSION_COOKIE_PERMANENT=False,
 )
+
+
+# ========== バージョン情報 ==========
+APP_VERSION = "0.9.0"
+
+# ========== 全テンプレートにバージョンを渡す ==========
+@app.context_processor
+def inject_version():
+    return dict(app_version=APP_VERSION)
 
 
 # ========== Basic認証設定（urasen.com用） ==========
@@ -523,7 +530,7 @@ def teacher_admin():
                 tests=tests, 
                 results=results, 
                 classes=classes,
-                app_version=APP_VERSION  # ←ヴァージョン情報
+                app_version=APP_VERSION
             )
         
     try:
