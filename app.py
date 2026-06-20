@@ -1,4 +1,5 @@
-#2026-4-11~2026-6-7 version2.9.5final-renovation.Version0.7.4
+#2026-4-11~2026-6-7 version2.9.5
+APP_VERSION = "0.7.6"
 
 # -*- coding: utf-8 -*-
 import os
@@ -518,9 +519,13 @@ def teacher_admin():
                     conn.close()
                 flash(f'CSV登録エラー: {str(e)}')
         
-        return redirect(url_for('teacher_admin'))
-
-    tests, results, classes = [], [], []
+            return render_template('admin.html', 
+                tests=tests, 
+                results=results, 
+                classes=classes,
+                app_version=APP_VERSION  # ←ヴァージョン情報
+            )
+        
     try:
         conn = get_db()
         cur = conn.cursor(cursor_factory=RealDictCursor)

@@ -28,9 +28,18 @@
 {% endif %}
 {% endwith %}
 
+
+
+
 <div class="row">
-    <!-- 左側：新規試験登録 -->
+    <!-- ============================================================ -->
+    <!-- 左側：新規試験登録 + 学生管理 + 更新履歴                      -->
+    <!-- ============================================================ -->
     <div class="col-md-4 mb-4" style="margin-top: 60px;">
+        
+        <!-- ========================================================== -->
+        <!-- カード1: 新規試験登録                                      -->
+        <!-- ========================================================== -->
         <div class="card shadow-sm border-0 bg-white rounded-3">
             <div class="card-header bg-danger text-white py-3">
                 <h5 class="card-title mb-0 fw-bold"><i class="bi bi-file-earmark-arrow-up"></i> 新規試験（CBT）の登録</h5>
@@ -64,12 +73,13 @@
                     </button>
                 </form>
             </div>
-            <!-- ★★★ ここに card-footer を移動（card-bodyの外、cardの内側） ★★★ -->
+            
+            <!-- ======================================================== -->
+            <!-- 学生管理                                                  -->
+            <!-- ======================================================== -->
             <div class="card-footer bg-light py-2 border-top">
                 <div class="d-flex justify-content-between align-items-center flex-wrap">
-                    <span class="small text-muted">
-                        <i class="bi bi-people-fill me-1"></i> 学生管理
-                    </span>
+                    <span class="small text-muted">学生管理</span>
                     <div class="d-flex gap-2">
                         <button onclick="showDummyMessage('登録')" class="btn btn-sm btn-outline-success">
                             <i class="bi bi-person-plus-fill"></i> 学生登録
@@ -81,7 +91,44 @@
                 </div>
             </div>
         </div>
+
+        <!-- ========================================================== -->
+        <!-- カード2: システム更新履歴                                   -->
+        <!-- ========================================================== -->
+        <div class="card shadow-sm border-0 bg-white rounded-3 mt-3">
+            <div class="card-header bg-secondary text-white py-1 px-3">
+                <small class="fw-bold">システム更新履歴</small>
+            </div>
+            <div class="card-body p-0" style="max-height: 300px; overflow-y: auto;">
+                <table class="table table-sm table-borderless mb-0" style="font-family: 'Courier New', monospace; font-size: 0.7rem;">
+                    <tbody>
+                        <!-- ★ 更新履歴を追記する場合は、この下に追加してください ★ -->
+                        <tr><td class="text-nowrap" style="color: #000;">2026-06-21</td><td> 軽微なデザイン調整</td></tr>
+                        <tr><td class="text-nowrap" style="color: #000;">2026-06-20</td><td> 更新履歴を左側に移動、デザイン調整</td></tr>
+                        <tr><td class="text-nowrap" style="color: #000;">2026-06-19</td><td> ランダム出題機能を実装</td></tr>
+                        <tr><td class="text-nowrap" style="color: #000;">2026-06-19</td><td> urasen.com に Basic認証を追加</td></tr>
+                        <tr><td class="text-nowrap" style="color: #000;">2026-06-18</td><td> AIコメントをDBに保存して再利用</td></tr>
+                        <tr><td class="text-nowrap" style="color: #000;">2026-06-18</td><td> 先生用結果閲覧ページを作成</td></tr>
+                        <tr><td class="text-nowrap" style="color: #000;">2026-06-18</td><td> データ自動削除機能（7日/30日）</td></tr>
+                        <tr><td class="text-nowrap" style="color: #000;">2026-06-18</td><td> 日本時間表示を修正</td></tr>
+                        <tr><td class="text-nowrap" style="color: #000;">2026-06-18</td><td> 次へボタン保存中を赤色に変更</td></tr>
+                        <tr><td class="text-nowrap" style="color: #000;">2026-06-18</td><td> 全画面強制終了を無効化</td></tr>
+                        <tr><td class="text-nowrap" style="color: #000;">2026-06-17</td><td> レーダーチャート表示を修正</td></tr>
+                        <tr><td class="text-nowrap" style="color: #000;">2026-06-17</td><td> Gemini AIコメント連携</td></tr>
+                        <tr><td class="text-nowrap" style="color: #000;">2026-06-16</td><td> 志望動機作成機能を追加</td></tr>
+                        <tr><td class="text-nowrap" style="color: #000;">2026-06-15</td><td> 管理画面レイアウトを調整</td></tr>
+                        <!-- ★ 新しい更新を追加するときは、この上に追加してください ★ -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="card-footer bg-light py-1 text-center border-top">
+                <small class="text-muted" style="font-size: 0.65rem;">
+                    ver.0.5.2 | 開発者: Ikeda
+                </small>
+            </div>
+        </div>
     </div>
+
 
     <!-- 右側：テスト一覧 + 受験結果 -->
     <div class="col-md-8 mb-4">
@@ -150,79 +197,6 @@
                         </tbody>
                     </table>
                 </div>
-            </div>
-        </div>
-
-        <!-- ★★★ 更新履歴をここに追加 ★★★ -->
-        <div class="card shadow-sm border-0 bg-white rounded-3 mb-4">
-            <div class="card-header bg-info text-white py-2">
-                <h6 class="card-title mb-0 fw-bold">
-                    <i class="bi bi-clock-history"></i> システム更新履歴
-                    <span class="badge bg-light text-dark ms-2">Ver.0.5.2</span>
-                </h6>
-            </div>
-            <div class="card-body p-0" style="max-height: 180px; overflow-y: auto;">
-                <table class="table table-sm table-hover mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th style="width: 170px;">日時</th>
-                            <th>更新内容</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td class="text-nowrap"><span class="badge bg-success">2026-06-19</span></td>
-                            <td>🎯 ランダム出題機能を実装</td>
-                        </tr>
-                        <tr>
-                            <td class="text-nowrap"><span class="badge bg-success">2026-06-19</span></td>
-                            <td>🔒 urasen.com に Basic認証を追加</td>
-                        </tr>
-                        <tr>
-                            <td class="text-nowrap"><span class="badge bg-success">2026-06-18</span></td>
-                            <td>💾 AIコメントをDBに保存して再利用</td>
-                        </tr>
-                        <tr>
-                            <td class="text-nowrap"><span class="badge bg-success">2026-06-18</span></td>
-                            <td>👨‍🏫 先生用結果閲覧ページを作成</td>
-                        </tr>
-                        <tr>
-                            <td class="text-nowrap"><span class="badge bg-success">2026-06-18</span></td>
-                            <td>🗑️ データ自動削除機能（7日/30日）</td>
-                        </tr>
-                        <tr>
-                            <td class="text-nowrap"><span class="badge bg-success">2026-06-18</span></td>
-                            <td>🕐 日本時間表示を修正</td>
-                        </tr>
-                        <tr>
-                            <td class="text-nowrap"><span class="badge bg-success">2026-06-18</span></td>
-                            <td>🎨 次へボタン保存中を赤色に変更</td>
-                        </tr>
-                        <tr>
-                            <td class="text-nowrap"><span class="badge bg-success">2026-06-18</span></td>
-                            <td>🔒 全画面強制終了を無効化</td>
-                        </tr>
-                        <tr>
-                            <td class="text-nowrap"><span class="badge bg-success">2026-06-17</span></td>
-                            <td>📊 レーダーチャート表示を修正</td>
-                        </tr>
-                        <tr>
-                            <td class="text-nowrap"><span class="badge bg-success">2026-06-17</span></td>
-                            <td>🤖 Gemini AIコメント連携</td>
-                        </tr>
-                        <tr>
-                            <td class="text-nowrap"><span class="badge bg-success">2026-06-16</span></td>
-                            <td>📝 志望動機作成機能を追加</td>
-                        </tr>
-                        <tr>
-                            <td class="text-nowrap"><span class="badge bg-success">2026-06-15</span></td>
-                            <td>🏗️ 管理画面レイアウトを調整</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            <div class="card-footer bg-light py-1 text-center">
-                <small class="text-muted">📝 開発者: Ikeda | 最終更新: 2026-06-19</small>
             </div>
         </div>
 
