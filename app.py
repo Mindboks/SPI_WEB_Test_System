@@ -1,5 +1,5 @@
 #2026-4-11~2026-6-7 version2.9.5
-APP_VERSION = "0.7.6"
+APP_VERSION = "0.7.7"
 
 # -*- coding: utf-8 -*-
 import os
