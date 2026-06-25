@@ -456,7 +456,6 @@ def teacher_admin():
                     conn.close()
                 flash(f'CSV登録エラー: {str(e)}')
         return redirect(url_for('teacher_admin'))
-
     # GET処理
     tests, results, classes = [], [], []
     try:
@@ -466,17 +465,19 @@ def teacher_admin():
         classes = [row['class_id'] for row in cur.fetchall()]
         cur.execute('SELECT * FROM tests ORDER BY id DESC')
         tests = cur.fetchall()
+        
+        # ★★★ ここを修正 ★★★
         cur.execute('''SELECT r.id, t.name AS test_name, u.class_id, u.id AS student_id, u.name AS student_name, r.score, r.timestamp 
-                       FROM results r 
-                       JOIN tests t ON r.test_id = t.id 
-                       JOIN users u ON r.user_id = u.id 
-                       ORDER BY r.timestamp DESC''')
+                    FROM results r 
+                    JOIN tests t ON r.test_id = t.id 
+                    JOIN users u ON r.user_id = u.id 
+                    ORDER BY t.name ASC, u.class_id ASC, u.id ASC''')
         results = cur.fetchall()
         cur.close()
         conn.close()
     except Exception as e:
         print(f"データ取得エラー: {e}")
-    
+
     return render_template('admin.html', 
         tests=tests, 
         results=results, 
