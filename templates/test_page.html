@@ -149,11 +149,9 @@ let timerInterval = null;
 let fullscreenExitCount = 0;
 let fullscreenWatchStarted = false;
 
-// ========== 2. タイマー制御（durationはテンプレートから直接取得） ==========
+// ========== タイマー制御（durationを確実に取得） ==========
 let durationMinutes = parseInt("{{ duration }}");
-
 console.log("【デバッグ】durationMinutes:", durationMinutes);
-console.log("【デバッグ】totalQuestions:", totalQuestions);
 
 if (durationMinutes <= 0 || isNaN(durationMinutes)) {
     durationMinutes = 30;
