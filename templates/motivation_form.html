@@ -310,6 +310,12 @@
 </div>
 
 <script>
+    // 5分ごとにセッションを維持
+    setInterval(() => {
+        fetch('/api/check_session', { credentials: 'include' })
+            .then(res => res.json())
+            .catch(() => {});
+    }, 300000);  // 5分
     // アルバイト以外の仕事の表示切替
     document.getElementById('other-job-select').addEventListener('change', function() {
         const otherJobInput = document.querySelector('input[name="other_job_company"]');

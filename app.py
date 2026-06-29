@@ -51,11 +51,12 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
     PERMANENT_SESSION_LIFETIME=7200,  # 2時間に延長
+    SESSION_COOKIE_DOMAIN='.cbtsy.com',  # ← 追加（wwwあり/なし両方対応）
     SESSION_COOKIE_PERMANENT=True,
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "0.9.9"
+APP_VERSION = "1.0.0"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
@@ -110,6 +111,13 @@ def update_user_password(user_id, new_password):
     cur.close()
     conn.close()
     return updated
+
+@app.route('/api/check_session', methods=['GET'])
+def check_session():
+    if 'user_id' in session:
+        return jsonify({'valid': True, 'user_id': session['user_id']})
+    return jsonify({'valid': False}), 401
+
 
 # ========== コメント生成関数 ==========
 def generate_ai_comment(score, details_data):
