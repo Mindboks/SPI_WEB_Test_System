@@ -19,6 +19,11 @@
         </div>
     </div>
 
+    <!-- デバッグ情報表示エリア -->
+    <div id="debug-area" style="background: #fff3cd; border: 1px solid #ffc107; padding: 8px 12px; border-radius: 4px; margin-bottom: 8px; font-size: 0.85rem; display: none;">
+        <strong>🔍 デバッグ:</strong> <span id="debug-message">読み込み中...</span>
+    </div>
+
     <!-- メインコンテンツ -->
     <div class="row flex-grow-1 overflow-hidden" style="min-height: 0;">
         <div class="col-md-12 h-100 d-flex flex-column mb-2">
@@ -32,10 +37,19 @@
                     <div class="display-4 fw-bold text-primary tracking-wider bg-primary-subtle py-2 px-4 rounded border border-primary-subtle" id="target-box" style="letter-spacing: 2px;"></div>
                 </div>
 
-                <div class="fs-4 text-dark mb-3 p-3 bg-light rounded border shadow-sm flex-shrink-0" id="question-text" style="line-height: 1.6; font-weight: 500; max-height: 120px; overflow-y: auto;"></div>
+                <div class="fs-4 text-dark mb-3 p-3 bg-light rounded border shadow-sm flex-shrink-0" id="question-text" style="line-height: 1.6; font-weight: 500; max-height: 120px; overflow-y: auto;">
+                    <span class="text-muted">問題を読み込み中...</span>
+                </div>
 
                 <div class="flex-grow-1 overflow-auto px-1">
-                    <div class="row row-cols-1 row-cols-md-2 g-2" id="choices-container"></div>
+                    <div class="row row-cols-1 row-cols-md-2 g-2" id="choices-container">
+                        <div class="text-center py-5 w-100">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="text-muted mt-2">選択肢を読み込み中...</p>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="d-flex justify-content-between border-top pt-3 mt-2 flex-shrink-0">
@@ -63,14 +77,16 @@
                     </div>
                 </div>
                 <div class="card-body p-2" style="max-height: 85px; overflow-y: auto; background-color: #fbfbfb;">
-                    <div class="d-flex flex-wrap gap-1" id="nav-buttons-container"></div>
+                    <div id="nav-buttons-container" class="d-flex flex-wrap gap-1">
+                        <span class="text-muted">ナビゲーションを読み込み中...</span>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- ====== 全画面ブロッカー（完全版） ====== -->
+<!-- ====== 全画面ブロッカー ====== -->
 <div id="fullscreen-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 99999; flex-direction: column; justify-content: center; align-items: center; color: white; font-family: 'Noto Sans JP', sans-serif;">
     <div style="text-align: center; max-width: 600px; padding: 40px;">
         <div style="font-size: 80px; margin-bottom: 20px;">🔒</div>
@@ -89,7 +105,7 @@
     </div>
 </div>
 
-<!-- ====== 不正検知オーバーレイ（全画面解除時） ====== -->
+<!-- ====== 不正検知オーバーレイ ====== -->
 <div id="cheat-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,0,0,0.9); z-index: 99998; flex-direction: column; justify-content: center; align-items: center; color: white; font-family: 'Noto Sans JP', sans-serif;">
     <div style="text-align: center; max-width: 600px; padding: 40px;">
         <div style="font-size: 80px; margin-bottom: 20px;">🚫</div>
@@ -103,6 +119,12 @@
             <i class="bi bi-house me-2"></i> ダッシュボードに戻る
         </button>
     </div>
+</div>
+
+<!-- ====== トースト通知 ====== -->
+<div id="toast-message" style="position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: white; padding: 15px 30px; border-radius: 10px; z-index: 99999; display: none; max-width: 90%; text-align: center; font-size: 1rem; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+    <span id="toast-text"></span>
+    <button onclick="hideToast()" style="background: none; border: none; color: #ff6b6b; margin-left: 15px; font-size: 1.2rem; cursor: pointer;">✕</button>
 </div>
 
 <style>
@@ -120,7 +142,6 @@
         transform: scale(1.2);
         cursor: pointer;
     }
-    /* 問題文と選択肢のスクロール */
     #question-text {
         max-height: 120px;
         overflow-y: auto;
@@ -129,13 +150,17 @@
         max-height: 350px;
         overflow-y: auto;
     }
-    /* ローディング表示 */
+    @media (max-width: 768px) {
+        #question-text { max-height: 100px; font-size: 1rem; }
+        #choices-container { max-height: 300px; }
+    }
+    /* ローディングスピナー */
     .loading-spinner {
         display: inline-block;
-        width: 20px;
-        height: 20px;
-        border: 3px solid #f3f3f3;
-        border-top: 3px solid #0d6efd;
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #0d6efd;
         border-radius: 50%;
         animation: spin 1s linear infinite;
     }
@@ -143,505 +168,552 @@
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
     }
-    @media (max-width: 768px) {
-        #question-text { max-height: 100px; font-size: 1rem; }
-        #choices-container { max-height: 300px; }
-    }
 </style>
 
 <script>
-    // ====== 基本設定 ======
-    let currentQNo = 1;
-    const totalQuestions = parseInt("{{ total_q }}");
-    const testId = "{{ test.id }}";
-    let isSubmitting = false;
-    let timeUpFlag = false;
-    let cheatDetected = false;
-    let isSessionError = false;
-    let isApiError = false;
-    let networkRetryCount = 0;
-    const MAX_NETWORK_RETRY = 3;
-    let isLoading = false;
-
-    // ====== 1. タイマー制御 ======
-    let durationMinutes = parseInt("{{ test.duration }}");
-    let endTime = localStorage.getItem("exam_end_time_id_" + testId);
-    if (!endTime) {
-        endTime = new Date().getTime() + durationMinutes * 60 * 1000;
-        localStorage.setItem("exam_end_time_id_" + testId, endTime);
+// ====== デバッグ関数 ======
+function showDebug(message) {
+    const debugArea = document.getElementById('debug-area');
+    const debugMsg = document.getElementById('debug-message');
+    if (debugArea && debugMsg) {
+        debugArea.style.display = 'block';
+        debugMsg.textContent = message;
+        console.log('【デバッグ】', message);
     }
+}
 
-    function updateTimer() {
-        let now = new Date().getTime();
-        let distance = endTime - now;
-        
-        if (distance <= 0 && !timeUpFlag) {
-            timeUpFlag = true;
-            clearInterval(timerInterval);
-            localStorage.removeItem("exam_end_time_id_" + testId);
-            if (!isSubmitting) {
-                isSubmitting = true;
-                const checkedRadio = document.querySelector('input[name="choice"]:checked');
-                if (checkedRadio && currentQNo <= totalQuestions) {
-                    const selectedChoice = checkedRadio.value;
-                    safeApiCall(`/api/student/test/${testId}/get_question/${currentQNo}`, {
-                        method: "POST",
-                        body: JSON.stringify({ choice: selectedChoice, skip: false })
-                    }).finally(() => { forceSubmitTimeUp(); });
-                } else {
-                    forceSubmitTimeUp();
-                }
-            }
-            return;
-        }
-        
-        let minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-        let seconds = Math.floor((distance % (1000 * 60)) / 1000);
-        let timeStr = (minutes < 10 ? "0" : "") + minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
-        document.getElementById("timer").innerHTML = timeStr;
-        
-        if (distance <= 300000) {
-            document.getElementById("timer").style.color = "#ff4444";
-            document.getElementById("timer").style.fontWeight = "bold";
-        }
+// ====== トースト通知 ======
+function showToast(message, duration = 4000) {
+    const toast = document.getElementById('toast-message');
+    const text = document.getElementById('toast-text');
+    if (toast && text) {
+        text.textContent = message;
+        toast.style.display = 'block';
+        clearTimeout(window.toastTimer);
+        window.toastTimer = setTimeout(() => {
+            toast.style.display = 'none';
+        }, duration);
     }
+}
+
+function hideToast() {
+    const toast = document.getElementById('toast-message');
+    if (toast) {
+        toast.style.display = 'none';
+        clearTimeout(window.toastTimer);
+    }
+}
+
+// ====== 基本設定 ======
+let currentQNo = 1;
+const totalQuestions = parseInt("{{ total_q }}");
+const testId = "{{ test.id }}";
+let isSubmitting = false;
+let timeUpFlag = false;
+let cheatDetected = false;
+let isSessionError = false;
+let isLoading = false;
+let retryCount = 0;
+const MAX_RETRY = 3;
+
+showDebug(`試験開始: test_id=${testId}, total_q=${totalQuestions}`);
+
+// ====== タイマー制御 ======
+let durationMinutes = parseInt("{{ test.duration }}");
+showDebug(`制限時間: ${durationMinutes}分`);
+
+if (!durationMinutes || durationMinutes <= 0) {
+    durationMinutes = 30;
+    showDebug(`制限時間が不正な値のためデフォルト(30分)を使用`);
+}
+
+let endTime = localStorage.getItem("exam_end_time_id_" + testId);
+if (!endTime) {
+    endTime = new Date().getTime() + durationMinutes * 60 * 1000;
+    localStorage.setItem("exam_end_time_id_" + testId, endTime);
+    showDebug(`タイマー開始: ${durationMinutes}分`);
+}
+
+function updateTimer() {
+    let now = new Date().getTime();
+    let distance = endTime - now;
     
-    function forceSubmitTimeUp() {
-        alert("制限時間が終了しました。結果を表示します。");
+    if (distance <= 0 && !timeUpFlag) {
+        timeUpFlag = true;
+        clearInterval(timerInterval);
         localStorage.removeItem("exam_end_time_id_" + testId);
-        window.location.href = `/student/test/${testId}/submit`;
-    }
-    
-    function forceSubmit() {
-        if (isSubmitting) return;
-        isSubmitting = true;
-        if (confirm('本当に試験を終了して提出しますか？')) {
-            const checkedRadio = document.querySelector('input[name="choice"]:checked');
-            if (checkedRadio && currentQNo <= totalQuestions) {
-                const selectedChoice = checkedRadio.value;
-                safeApiCall(`/api/student/test/${testId}/get_question/${currentQNo}`, {
-                    method: "POST",
-                    body: JSON.stringify({ choice: selectedChoice, skip: false })
-                }).finally(() => { finalSubmit(); });
-            } else {
-                finalSubmit();
-            }
-        } else {
-            isSubmitting = false;
-        }
-    }
-    
-    function finalSubmit() {
-        localStorage.removeItem("exam_end_time_id_" + testId);
-        window.location.href = `/student/test/${testId}/submit`;
-    }
-    
-    let timerInterval = setInterval(updateTimer, 1000);
-    updateTimer();
-
-    // ====== 2. 安全なAPI呼び出し（ネットワークエラー時はリトライ） ======
-    function safeApiCall(url, options = {}) {
-        return new Promise((resolve, reject) => {
-            const doFetch = (retryCount) => {
-                fetch(url, {
-                    ...options,
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(options.headers || {})
-                    }
-                })
-                .then(response => {
-                    // セッション切れチェック（最優先）
-                    if (response.status === 401 || response.status === 302) {
-                        console.log('【セッション切れ】ログイン画面へ遷移');
-                        isSessionError = true;
-                        localStorage.removeItem("exam_end_time_id_" + testId);
-                        hideFullscreenBlocker();
-                        alert('セッションが切れました。再度ログインしてください。');
-                        window.location.href = '/login';
-                        reject(new Error('Session expired'));
-                        return;
-                    }
-                    
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    if (data && data.error) {
-                        // APIがエラーを返した場合もリトライ
-                        if (retryCount < MAX_NETWORK_RETRY) {
-                            console.log(`【リトライ】${retryCount + 1}/${MAX_NETWORK_RETRY} - ${data.error}`);
-                            setTimeout(() => doFetch(retryCount + 1), 2000 * (retryCount + 1));
-                            return;
-                        }
-                        reject(new Error(data.error));
-                        return;
-                    }
-                    networkRetryCount = 0;
-                    resolve(data);
-                })
-                .catch(error => {
-                    if (retryCount < MAX_NETWORK_RETRY) {
-                        console.log(`【ネットワークリトライ】${retryCount + 1}/${MAX_NETWORK_RETRY}`);
-                        setTimeout(() => doFetch(retryCount + 1), 3000 * (retryCount + 1));
-                    } else {
-                        console.error('【ネットワークエラー】リトライ上限超過:', error);
-                        reject(error);
-                    }
-                });
-            };
-            doFetch(0);
-        });
-    }
-
-    // ====== 3. 全画面制御 ======
-    const overlay = document.getElementById('fullscreen-overlay');
-    const cheatOverlay = document.getElementById('cheat-overlay');
-    const fullscreenBtn = document.getElementById('fullscreen-btn');
-
-    function showFullscreenBlocker() {
-        if (isSessionError || isApiError) return;
-        if (cheatDetected || timeUpFlag) return;
-        if (overlay) {
-            overlay.style.display = 'flex';
-            console.log('【ブロッカー】表示');
-        }
-    }
-
-    function hideFullscreenBlocker() {
-        if (overlay) {
-            overlay.style.display = 'none';
-            console.log('【ブロッカー】非表示');
-        }
-    }
-
-    function enterFullscreen() {
-        const elem = document.documentElement;
-        if (elem.requestFullscreen) {
-            elem.requestFullscreen()
-                .then(() => {
-                    hideFullscreenBlocker();
-                    console.log('【全画面】有効化されました');
-                })
-                .catch((err) => {
-                    console.error('【全画面エラー】:', err);
-                    alert('全画面モードへの切り替えに失敗しました。\nブラウザの設定を確認してください。');
-                });
-        }
-    }
-
-    fullscreenBtn.addEventListener('click', enterFullscreen);
-
-    // 全画面変更イベント（最重要）
-    document.addEventListener('fullscreenchange', function() {
-        if (!document.fullscreenElement && !cheatDetected && !isSessionError) {
-            console.log('【不正検知】全画面が解除されました');
-            cheatDetected = true;
-            
-            // サーバーに通知（非同期、完了を待たない）
-            fetch(`/student/test/${testId}/cheated`, { 
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'}
-            }).catch(() => {});
-            
-            cheatOverlay.style.display = 'flex';
-            localStorage.removeItem("exam_end_time_id_" + testId);
-            
+        if (!isSubmitting) {
+            isSubmitting = true;
+            showToast('⏰ 制限時間が終了しました。結果を表示します。', 3000);
             setTimeout(() => {
-                window.location.href = '/student_dashboard';
-            }, 3000);
+                window.location.href = `/student/test/${testId}/submit`;
+            }, 1500);
         }
-    });
+        return;
+    }
+    
+    let minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+    let seconds = Math.floor((distance % (1000 * 60)) / 1000);
+    let timeStr = (minutes < 10 ? "0" : "") + minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+    document.getElementById("timer").innerHTML = timeStr;
+    
+    if (distance <= 60000) {
+        document.getElementById("timer").style.color = "#ff4444";
+        document.getElementById("timer").style.fontWeight = "bold";
+    }
+}
 
-    // ====== 4. キーボード・マウス制御 ======
-    document.addEventListener('keydown', function(e) {
-        // セッションエラー時は何もしない
-        if (isSessionError) return;
+let timerInterval = setInterval(updateTimer, 1000);
+updateTimer();
+
+// ====== 全画面制御 ======
+const overlay = document.getElementById('fullscreen-overlay');
+const cheatOverlay = document.getElementById('cheat-overlay');
+const fullscreenBtn = document.getElementById('fullscreen-btn');
+
+function showFullscreenBlocker() {
+    if (overlay) {
+        overlay.style.display = 'flex';
+        showDebug('全画面ブロッカー表示');
+    }
+}
+
+function hideFullscreenBlocker() {
+    if (overlay) {
+        overlay.style.display = 'none';
+        showDebug('全画面ブロッカー非表示');
+    }
+}
+
+function enterFullscreen() {
+    const elem = document.documentElement;
+    if (elem.requestFullscreen) {
+        elem.requestFullscreen()
+            .then(() => {
+                hideFullscreenBlocker();
+                showDebug('全画面モード有効化');
+                // 全画面になったら問題を読み込む
+                loadQuestion(1);
+            })
+            .catch((err) => {
+                showDebug('全画面エラー: ' + err.message);
+                alert('全画面モードへの切り替えに失敗しました。\nブラウザの設定を確認してください。');
+            });
+    }
+}
+
+fullscreenBtn.addEventListener('click', enterFullscreen);
+
+// 全画面変更イベント
+document.addEventListener('fullscreenchange', function() {
+    if (!document.fullscreenElement && !cheatDetected) {
+        showDebug('⚠️ 全画面が解除されました');
+        cheatDetected = true;
         
-        if (!document.fullscreenElement && !cheatDetected) {
-            if (overlay) {
-                overlay.style.display = 'flex';
+        fetch(`/student/test/${testId}/cheated`, { 
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        }).catch(() => {});
+        
+        cheatOverlay.style.display = 'flex';
+        localStorage.removeItem("exam_end_time_id_" + testId);
+        
+        setTimeout(() => {
+            window.location.href = '/student_dashboard';
+        }, 3000);
+    } else if (document.fullscreenElement) {
+        showDebug('全画面モード復元');
+    }
+});
+
+// ====== 安全なAPI呼び出し ======
+function safeApiCall(url, options = {}) {
+    showDebug(`API呼び出し: ${url}`);
+    return new Promise((resolve, reject) => {
+        fetch(url, {
+            ...options,
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(options.headers || {})
             }
-            e.preventDefault();
-            return false;
-        }
-        
-        const blockedKeys = ['F11', 'F12', 'Escape', 'PrintScreen', 'ContextMenu'];
-        if (blockedKeys.includes(e.key)) {
-            e.preventDefault();
-            return false;
-        }
-        
-        if (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i')) {
-            e.preventDefault();
-            return false;
-        }
-        if (e.ctrlKey && (e.key === 'U' || e.key === 'u')) {
-            e.preventDefault();
-            return false;
-        }
-        if (e.ctrlKey && (e.key === 'S' || e.key === 's')) {
-            e.preventDefault();
-            return false;
-        }
-        if (e.ctrlKey && (e.key === 'P' || e.key === 'p')) {
-            e.preventDefault();
-            return false;
-        }
-        if (e.key === 'F5' || (e.ctrlKey && e.key === 'r') || (e.ctrlKey && e.shiftKey && e.key === 'R')) {
-            e.preventDefault();
-            alert('試験中のリロードは禁止されています。');
-            return false;
-        }
-        if (e.altKey && e.key === 'F4') {
-            e.preventDefault();
-            alert('試験中のタブ閉じは禁止されています。');
-            return false;
-        }
-        if (e.ctrlKey && (e.key === 'w' || e.key === 'W')) {
-            e.preventDefault();
-            alert('試験中のタブ閉じは禁止されています。');
-            return false;
-        }
+        })
+        .then(response => {
+            showDebug(`APIレスポンス: ${response.status}`);
+            if (response.status === 401 || response.status === 302) {
+                showDebug('⚠️ セッション切れ');
+                isSessionError = true;
+                localStorage.removeItem("exam_end_time_id_" + testId);
+                alert('セッションが切れました。再度ログインしてください。');
+                window.location.href = '/login';
+                reject(new Error('Session expired'));
+                return;
+            }
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data && data.error) {
+                showDebug(`APIエラー: ${data.error}`);
+                reject(new Error(data.error));
+                return;
+            }
+            showDebug('API成功');
+            resolve(data);
+        })
+        .catch(error => {
+            showDebug(`API失敗: ${error.message}`);
+            reject(error);
+        });
     });
+}
 
-    document.addEventListener('contextmenu', function(e) {
-        e.preventDefault();
-        return false;
-    });
-
-    document.addEventListener('selectstart', function(e) {
-        if (!cheatDetected) {
-            e.preventDefault();
-            return false;
-        }
-    });
-
-    document.addEventListener('copy', function(e) {
-        e.preventDefault();
-        return false;
-    });
-
-    // 戻るボタン制御
-    history.pushState(null, null, location.href);
-    window.addEventListener('popstate', function(event) {
-        if (!cheatDetected && !isSessionError) {
-            history.pushState(null, null, location.href);
-            alert('試験中のページ遷移は禁止されています。');
-        }
-    });
-
-    // ページ離脱
-    window.addEventListener('beforeunload', function(e) {
-        if (document.fullscreenElement && !cheatDetected) {
-            e.preventDefault();
-            e.returnValue = '試験中です。ページを離れると不正行為とみなされます。';
-            return e.returnValue;
-        }
-    });
-
-    // ====== 5. 問題読み込み ======
-    function loadQuestion(qNo, retryCount = 0) {
-        if (isSessionError) {
-            window.location.href = '/login';
-            return;
-        }
-        if (isLoading) return;
-        
-        let now = new Date().getTime();
-        if (endTime && now >= endTime) {
-            alert("制限時間が過ぎました。自動提出します。");
-            forceSubmit();
+// ====== 問題読み込み ======
+function loadQuestion(qNo) {
+    if (isLoading) return;
+    if (isSessionError) {
+        window.location.href = '/login';
+        return;
+    }
+    
+    showDebug(`問題読み込み: Q${qNo}`);
+    isLoading = true;
+    currentQNo = qNo;
+    
+    // ローディング表示
+    document.getElementById("question-text").innerHTML = `
+        <div class="text-center py-3">
+            <div class="loading-spinner mb-2"></div>
+            <p class="text-muted">問題を読み込み中...</p>
+        </div>
+    `;
+    document.getElementById("choices-container").innerHTML = `
+        <div class="text-center py-5 w-100">
+            <div class="loading-spinner mb-3"></div>
+            <p class="text-muted">選択肢を読み込み中...</p>
+        </div>
+    `;
+    document.getElementById("nav-buttons-container").innerHTML = `
+        <span class="text-muted">読み込み中...</span>
+    `;
+    
+    safeApiCall(`/api/student/test/${testId}/get_question/${qNo}`, {
+        method: 'GET'
+    })
+    .then(data => {
+        isLoading = false;
+        if (!data) {
+            showDebug('⚠️ データが空です');
+            if (retryCount < MAX_RETRY) {
+                retryCount++;
+                showDebug(`リトライ ${retryCount}/${MAX_RETRY}`);
+                setTimeout(() => loadQuestion(qNo), 2000);
+            } else {
+                showToast('⚠️ 問題の読み込みに失敗しました。ページを再読み込みしてください。', 5000);
+            }
             return;
         }
         
-        if (!document.fullscreenElement && !cheatDetected && !isApiError) {
-            showFullscreenBlocker();
-            return;
+        retryCount = 0;
+        showDebug(`問題表示: Q${data.q_no} (カテゴリ: ${data.category})`);
+        displayQuestion(data);
+    })
+    .catch(error => {
+        isLoading = false;
+        showDebug(`エラー: ${error.message}`);
+        if (retryCount < MAX_RETRY) {
+            retryCount++;
+            showDebug(`リトライ ${retryCount}/${MAX_RETRY}`);
+            setTimeout(() => loadQuestion(qNo), 3000);
+        } else {
+            document.getElementById("question-text").innerHTML = `
+                <div class="text-center py-4 text-danger">
+                    <i class="bi bi-exclamation-triangle-fill fs-2"></i>
+                    <p class="mt-2">問題の読み込みに失敗しました。</p>
+                    <button class="btn btn-outline-primary btn-sm mt-2" onclick="loadQuestion(${qNo})">
+                        再試行
+                    </button>
+                </div>
+            `;
+            showToast('⚠️ 問題の読み込みに失敗しました。「再試行」ボタンを押してください。', 5000);
         }
-        
-        isLoading = true;
-        currentQNo = qNo;
-        
-        // ローディング表示
-        const container = document.getElementById("choices-container");
+    });
+}
+
+function displayQuestion(data) {
+    // 問題番号
+    document.getElementById("q-no-badge").innerText = `問 ${data.q_no} / 全 ${totalQuestions} 問`;
+    
+    // カテゴリ
+    document.getElementById("category-badge").innerText = `カテゴリ: ${data.category || '未分類'}`;
+    
+    // 問題文
+    document.getElementById("question-text").innerHTML = data.question || '（問題文がありません）';
+    
+    // ターゲット
+    const targetArea = document.getElementById("target-area");
+    const targetBox = document.getElementById("target-box");
+    if (data.target && data.target.trim() !== "") {
+        targetBox.innerText = data.target;
+        targetArea.style.display = "block";
+    } else {
+        targetArea.style.display = "none";
+    }
+    
+    // 次へボタン
+    const nextBtn = document.getElementById("next-btn");
+    if (currentQNo >= totalQuestions) {
+        nextBtn.innerHTML = `最終解答を記録して提出画面へ <i class="bi bi-box-arrow-up"></i>`;
+    } else {
+        nextBtn.innerHTML = `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
+    }
+    nextBtn.disabled = false;
+    nextBtn.classList.remove('btn-saving');
+    nextBtn.classList.add('btn-success');
+    
+    // 選択肢
+    const container = document.getElementById("choices-container");
+    container.innerHTML = "";
+    
+    const choices = data.choices || {};
+    const choiceKeys = Object.keys(choices);
+    showDebug(`選択肢数: ${choiceKeys.length}`);
+    
+    if (choiceKeys.length === 0) {
         container.innerHTML = `
-            <div class="text-center py-5 w-100">
-                <div class="loading-spinner mb-3"></div>
-                <p class="text-muted">問題を読み込み中...</p>
+            <div class="text-center py-4 text-muted w-100">
+                <i class="bi bi-info-circle fs-3"></i>
+                <p class="mt-2">選択肢がありません</p>
             </div>
         `;
-        
-        safeApiCall(`/api/student/test/${testId}/get_question/${qNo}`, {
-            method: 'GET'
-        })
-        .then(data => {
-            if (!data) {
-                if (retryCount < MAX_NETWORK_RETRY) {
-                    setTimeout(() => loadQuestion(qNo, retryCount + 1), 3000);
-                } else {
-                    alert('問題の読み込みに失敗しました。ページを再読み込みしてください。');
-                }
-                return;
-            }
-            
-            isApiError = false;
-            networkRetryCount = 0;
-            isLoading = false;
-            displayQuestion(data);
-        })
-        .catch(error => {
-            console.error('【問題読み込みエラー】', error);
-            isApiError = true;
-            isLoading = false;
-            
-            if (retryCount < MAX_NETWORK_RETRY) {
-                setTimeout(() => loadQuestion(qNo, retryCount + 1), 5000);
-            } else {
-                alert('問題の読み込みに失敗しました。\nネットワーク状態を確認して、ページを再読み込みしてください。');
-            }
-        });
+        return;
     }
+    
+    choiceKeys.forEach(key => {
+        const num = key.replace('a', '');
+        const choiceText = choices[key];
+        const isChecked = data.current_answer === num;
 
-    function displayQuestion(data) {
-        document.getElementById("q-no-badge").innerText = `問 ${data.q_no} / 全 ${totalQuestions} 問`;
-        document.getElementById("category-badge").innerText = `カテゴリ: ${data.category}`;
-        document.getElementById("question-text").innerHTML = data.question || '（問題文がありません）';
+        const col = document.createElement("div");
+        col.className = "col";
+        col.innerHTML = `
+            <label class="btn btn-outline-secondary w-100 text-start p-2 rounded-3 shadow-sm choice-label d-flex align-items-center ${isChecked ? 'selected-choice' : ''}" id="label-choice-${num}">
+                <input type="radio" name="choice" value="${num}" class="form-check-input me-3 style-radio" ${isChecked ? 'checked' : ''} onclick="highlightChoice('${num}')">
+                <span class="fw-bold text-dark" style="font-size: 1.05rem; white-space: normal; word-wrap: break-word;">[${num}] ${choiceText}</span>
+            </label>
+        `;
+        container.appendChild(col);
+    });
+    
+    // ナビゲーション
+    renderNavigation(data.status_list || []);
+}
 
-        const targetArea = document.getElementById("target-area");
-        const targetBox = document.getElementById("target-box");
-        if (data.target && data.target.trim() !== "") {
-            targetBox.innerText = data.target;
-            targetArea.style.display = "block";
-        } else {
-            targetArea.style.display = "none";
-        }
+function highlightChoice(num) {
+    document.querySelectorAll('.choice-label').forEach(el => el.classList.remove('selected-choice'));
+    const activeLabel = document.getElementById(`label-choice-${num}`);
+    if(activeLabel) activeLabel.classList.add('selected-choice');
+}
 
-        const nextBtn = document.getElementById("next-btn");
-        if (currentQNo >= totalQuestions) {
-            nextBtn.innerHTML = `最終解答を記録して提出画面へ <i class="bi bi-box-arrow-up"></i>`;
-        } else {
-            nextBtn.innerHTML = `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
-        }
-
-        const container = document.getElementById("choices-container");
-        container.innerHTML = "";
-        
-        const choices = data.choices || {};
-        const choiceKeys = Object.keys(choices);
-        
-        if (choiceKeys.length === 0) {
-            container.innerHTML = '<div class="text-center py-4 text-muted w-100">選択肢がありません</div>';
+// ====== 解答保存 ======
+function submitAnswer(isSkip) {
+    if (isLoading) return;
+    if (cheatDetected || isSessionError) return;
+    
+    let selectedChoice = "";
+    if (!isSkip) {
+        const checkedRadio = document.querySelector('input[name="choice"]:checked');
+        if (!checkedRadio && currentQNo <= totalQuestions) {
+            showToast('⚠️ 選択肢を選ぶか、「あとで解く/Skip」を押してください。', 3000);
             return;
         }
-        
-        choiceKeys.forEach(key => {
-            const num = key.replace('a', '');
-            const choiceText = choices[key];
-            const isChecked = data.current_answer === num;
-
-            const col = document.createElement("div");
-            col.className = "col";
-            col.innerHTML = `
-                <label class="btn btn-outline-secondary w-100 text-start p-2 rounded-3 shadow-sm choice-label d-flex align-items-center ${isChecked ? 'selected-choice' : ''}" id="label-choice-${num}">
-                    <input type="radio" name="choice" value="${num}" class="form-check-input me-3 style-radio" ${isChecked ? 'checked' : ''} onclick="highlightChoice('${num}')">
-                    <span class="fw-bold text-dark" style="font-size: 1.05rem; white-space: normal; word-wrap: break-word;">[${num}] ${choiceText}</span>
-                </label>
-            `;
-            container.appendChild(col);
-        });
-
-        renderNavigation(data.status_list || []);
+        if (checkedRadio) selectedChoice = checkedRadio.value;
     }
-
-    function highlightChoice(num) {
-        document.querySelectorAll('.choice-label').forEach(el => el.classList.remove('selected-choice'));
-        const activeLabel = document.getElementById(`label-choice-${num}`);
-        if(activeLabel) activeLabel.classList.add('selected-choice');
-    }
-
-    // ====== 6. 解答保存 ======
-    function submitAnswer(isSkip) {
-        if (cheatDetected || isSessionError) return;
-        
-        let selectedChoice = "";
-        if (!isSkip) {
-            const checkedRadio = document.querySelector('input[name="choice"]:checked');
-            if (!checkedRadio && currentQNo <= totalQuestions) {
-                alert("選択肢を選ぶか、わからない場合は「あとで解く/Skip」を押してください。");
-                return;
-            }
-            if (checkedRadio) selectedChoice = checkedRadio.value;
-        }
-
-        safeApiCall(`/api/student/test/${testId}/get_question/${currentQNo}`, {
-            method: "POST",
-            body: JSON.stringify({ choice: selectedChoice, skip: isSkip })
-        })
-        .then(data => {
-            if (currentQNo >= totalQuestions) {
-                finalSubmit();
-            } else {
-                loadQuestion(currentQNo + 1);
-            }
-        })
-        .catch(error => {
-            console.error('【解答保存エラー】', error);
-            alert('解答の保存に失敗しました。もう一度お試しください。');
-        });
-    }
-
-    // ====== 7. ナビゲーション ======
-    function renderNavigation(statusList) {
-        const container = document.getElementById("nav-buttons-container");
-        container.innerHTML = "";
-        statusList.forEach(s => {
-            const btn = document.createElement("button");
-            btn.type = "button";
-            btn.className = `btn btn-sm py-1 fw-bold border shadow-sm style-nav-btn`;
-            btn.style.width = "55px";
-            btn.style.fontSize = "0.8rem";
-            btn.innerText = `Q${s.q_no}`;
-
-            if (s.q_no === currentQNo) {
-                btn.classList.add("btn-primary", "text-white", "border-primary", "border-2");
-            } else if (s.is_answered) {
-                btn.classList.add("btn-success", "text-white", "border-success");
-            } else {
-                btn.classList.add("btn-light", "text-dark", "border-secondary-subtle");
-            }
-
-            btn.onclick = () => loadQuestion(s.q_no);
-            container.appendChild(btn);
-        });
-    }
-
-    // ====== 8. 定期的な状態チェック ======
-    setInterval(function() {
-        if (isSessionError || cheatDetected || timeUpFlag) return;
-        
-        if (!document.fullscreenElement) {
-            showFullscreenBlocker();
+    
+    const nextBtn = document.getElementById("next-btn");
+    nextBtn.disabled = true;
+    nextBtn.classList.remove('btn-success');
+    nextBtn.classList.add('btn-saving');
+    nextBtn.innerHTML = '⏳ 保存中...';
+    
+    showDebug(`回答保存: Q${currentQNo}, choice=${selectedChoice || 'skip'}`);
+    
+    safeApiCall(`/api/student/test/${testId}/get_question/${currentQNo}`, {
+        method: "POST",
+        body: JSON.stringify({ choice: selectedChoice, skip: isSkip })
+    })
+    .then(data => {
+        showDebug('回答保存成功');
+        if (currentQNo >= totalQuestions) {
+            // 最終問題 → 提出
+            showToast('📤 最終問題を提出します...', 2000);
+            setTimeout(() => {
+                window.location.href = `/student/test/${testId}/submit`;
+            }, 1500);
         } else {
-            hideFullscreenBlocker();
+            loadQuestion(currentQNo + 1);
         }
-    }, 3000);
-
-    // ====== 9. 初期化 ======
-    window.addEventListener("load", function() {
-        console.log('【初期化】試験ページ読み込み完了');
-        console.log('【デバッグ】総問題数:', totalQuestions);
-        console.log('【デバッグ】試験ID:', testId);
-        console.log('【デバッグ】制限時間:', durationMinutes, '分');
-        
-        if (!document.fullscreenElement) {
-            showFullscreenBlocker();
-        }
-        
-        loadQuestion(1);
+    })
+    .catch(error => {
+        showDebug(`回答保存エラー: ${error.message}`);
+        showToast('⚠️ 解答の保存に失敗しました。もう一度お試しください。', 4000);
+        nextBtn.disabled = false;
+        nextBtn.classList.remove('btn-saving');
+        nextBtn.classList.add('btn-success');
+        nextBtn.innerHTML = currentQNo >= totalQuestions ? 
+            `最終解答を記録して提出画面へ <i class="bi bi-box-arrow-up"></i>` : 
+            `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
     });
+}
+
+// ====== ナビゲーション ======
+function renderNavigation(statusList) {
+    const container = document.getElementById("nav-buttons-container");
+    container.innerHTML = "";
+    
+    if (!statusList || statusList.length === 0) {
+        container.innerHTML = '<span class="text-muted">ナビゲーションなし</span>';
+        return;
+    }
+    
+    statusList.forEach(s => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = `btn btn-sm py-1 fw-bold border shadow-sm`;
+        btn.style.width = "55px";
+        btn.style.fontSize = "0.8rem";
+        btn.innerText = `Q${s.q_no}`;
+
+        if (s.q_no === currentQNo) {
+            btn.classList.add("btn-primary", "text-white", "border-primary", "border-2");
+        } else if (s.is_answered) {
+            btn.classList.add("btn-success", "text-white", "border-success");
+        } else {
+            btn.classList.add("btn-light", "text-dark", "border-secondary-subtle");
+        }
+
+        btn.onclick = () => loadQuestion(s.q_no);
+        container.appendChild(btn);
+    });
+}
+
+// ====== 提出 ======
+function forceSubmit() {
+    if (isSubmitting) return;
+    isSubmitting = true;
+    
+    if (confirm('本当に試験を終了して提出しますか？')) {
+        showToast('📤 試験を提出しています...', 3000);
+        const checkedRadio = document.querySelector('input[name="choice"]:checked');
+        if (checkedRadio && currentQNo <= totalQuestions) {
+            const selectedChoice = checkedRadio.value;
+            safeApiCall(`/api/student/test/${testId}/get_question/${currentQNo}`, {
+                method: "POST",
+                body: JSON.stringify({ choice: selectedChoice, skip: false })
+            })
+            .finally(() => {
+                localStorage.removeItem("exam_end_time_id_" + testId);
+                window.location.href = `/student/test/${testId}/submit`;
+            });
+        } else {
+            localStorage.removeItem("exam_end_time_id_" + testId);
+            window.location.href = `/student/test/${testId}/submit`;
+        }
+    } else {
+        isSubmitting = false;
+    }
+}
+
+// ====== キーボード制御 ======
+document.addEventListener('keydown', function(e) {
+    if (isSessionError) return;
+    
+    if (!document.fullscreenElement && !cheatDetected) {
+        if (overlay) overlay.style.display = 'flex';
+        e.preventDefault();
+        return false;
+    }
+    
+    const blockedKeys = ['F11', 'F12', 'Escape', 'PrintScreen', 'ContextMenu'];
+    if (blockedKeys.includes(e.key)) {
+        e.preventDefault();
+        return false;
+    }
+    if (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i')) {
+        e.preventDefault();
+        return false;
+    }
+    if (e.ctrlKey && (e.key === 'U' || e.key === 'u')) {
+        e.preventDefault();
+        return false;
+    }
+    if (e.ctrlKey && (e.key === 'S' || e.key === 's')) {
+        e.preventDefault();
+        return false;
+    }
+    if (e.key === 'F5' || (e.ctrlKey && e.key === 'r')) {
+        e.preventDefault();
+        showToast('⚠️ 試験中のリロードは禁止されています。', 3000);
+        return false;
+    }
+});
+
+document.addEventListener('contextmenu', function(e) {
+    if (!cheatDetected) {
+        e.preventDefault();
+        return false;
+    }
+});
+
+document.addEventListener('copy', function(e) {
+    if (!cheatDetected) {
+        e.preventDefault();
+        return false;
+    }
+});
+
+// 戻るボタン制御
+history.pushState(null, null, location.href);
+window.addEventListener('popstate', function() {
+    if (!cheatDetected && !isSessionError) {
+        history.pushState(null, null, location.href);
+        showToast('⚠️ 試験中のページ遷移は禁止されています。', 3000);
+    }
+});
+
+// ページ離脱
+window.addEventListener('beforeunload', function(e) {
+    if (document.fullscreenElement && !cheatDetected) {
+        e.preventDefault();
+        e.returnValue = '試験中です。ページを離れると不正行為とみなされます。';
+        return e.returnValue;
+    }
+});
+
+// ====== 定期的な全画面チェック ======
+setInterval(function() {
+    if (isSessionError || cheatDetected || timeUpFlag) return;
+    if (!document.fullscreenElement) {
+        showFullscreenBlocker();
+    }
+}, 3000);
+
+// ====== 初期化 ======
+window.addEventListener("load", function() {
+    showDebug('=== ページ読み込み完了 ===');
+    showDebug(`test_id: ${testId}, total_q: ${totalQuestions}`);
+    showDebug(`duration: ${durationMinutes}分`);
+    
+    // 全画面チェック
+    if (!document.fullscreenElement) {
+        showFullscreenBlocker();
+        showDebug('全画面モード未起動 - ブロッカー表示');
+    } else {
+        showDebug('全画面モード起動済み');
+        loadQuestion(1);
+    }
+});
 </script>
 {% endblock %}
