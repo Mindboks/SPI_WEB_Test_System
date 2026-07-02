@@ -86,6 +86,20 @@
     </div>
 </div>
 
+<!-- ====== ローディングオーバーレイ（提出時） ====== -->
+<div id="submit-loading" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 100001; display: none; flex-direction: column; justify-content: center; align-items: center; color: white; font-family: 'Noto Sans JP', sans-serif;">
+    <div style="text-align: center;">
+        <div class="spinner-border text-success mb-4" style="width: 4rem; height: 4rem;" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <h2 class="fw-bold text-white" id="loading-title" style="font-size: 2rem;">採点中...</h2>
+        <p class="text-muted mt-3" id="loading-sub" style="font-size: 1.2rem;">しばらくお待ちください</p>
+        <div class="progress mt-4" style="width: 300px; height: 6px;">
+            <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" style="width: 100%"></div>
+        </div>
+    </div>
+</div>
+
 <!-- ====== 全画面ブロッカー ====== -->
 <div id="fullscreen-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 99999; flex-direction: column; justify-content: center; align-items: center; color: white; font-family: 'Noto Sans JP', sans-serif;">
     <div style="text-align: center; max-width: 600px; padding: 40px;">
@@ -182,6 +196,9 @@
         box-shadow: 0 4px 20px rgba(0,0,0,0.3);
         font-size: 1rem;
     }
+    #submit-loading {
+        cursor: wait;
+    }
 </style>
 
 <!-- ====== フォーカス警告 ====== -->
@@ -217,6 +234,25 @@ function hideToast() {
     if (toast) {
         toast.style.display = 'none';
         clearTimeout(window.toastTimer);
+    }
+}
+
+// ====== ローディング表示関数 ======
+function showLoading(title, subMessage) {
+    const loadingDiv = document.getElementById('submit-loading');
+    if (loadingDiv) {
+        loadingDiv.style.display = 'flex';
+        const titleEl = document.getElementById('loading-title');
+        const subEl = document.getElementById('loading-sub');
+        if (titleEl) titleEl.textContent = title || '採点中...';
+        if (subEl) subEl.textContent = subMessage || 'しばらくお待ちください';
+    }
+}
+
+function hideLoading() {
+    const loadingDiv = document.getElementById('submit-loading');
+    if (loadingDiv) {
+        loadingDiv.style.display = 'none';
     }
 }
 
@@ -262,12 +298,31 @@ function updateTimer() {
         timeUpFlag = true;
         clearInterval(timerInterval);
         localStorage.removeItem("exam_end_time_id_" + testId);
+        
         if (!isSubmitting) {
             isSubmitting = true;
-            showToast('⏰ 制限時間が終了しました。結果を表示します。', 3000);
-            setTimeout(() => {
-                window.location.href = `/student/test/${testId}/submit`;
-            }, 1500);
+            showLoading('⏰ 制限時間終了', '採点結果を表示しています...');
+            // 現在の回答を保存（選択されていれば）
+            const checkedRadio = document.querySelector('input[name="choice"]:checked');
+            if (checkedRadio && currentQNo <= totalQuestions) {
+                const selectedChoice = checkedRadio.value;
+                fetch(`/api/student/test/${testId}/get_question/${currentQNo}`, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({ choice: selectedChoice, skip: false })
+                })
+                .finally(() => {
+                    // 確実に結果ページへ遷移
+                    setTimeout(function() {
+                        window.location.href = `/student/test/${testId}/submit`;
+                    }, 1000);
+                });
+            } else {
+                // 選択肢なしでも結果ページへ
+                setTimeout(function() {
+                    window.location.href = `/student/test/${testId}/submit`;
+                }, 1000);
+            }
         }
         return;
     }
@@ -721,10 +776,11 @@ function submitAnswer(isSkip) {
     .then(data => {
         showDebug('回答保存成功');
         if (currentQNo >= totalQuestions) {
-            showToast('📤 最終問題を提出します...', 2000);
-            setTimeout(() => {
+            // 最終問題 → 結果ページへ
+            showLoading('📤 提出中', '結果を表示しています...');
+            setTimeout(function() {
                 window.location.href = `/student/test/${testId}/submit`;
-            }, 1500);
+            }, 1000);
         } else {
             loadQuestion(currentQNo + 1);
         }
@@ -768,12 +824,13 @@ function renderNavigation(statusList) {
     });
 }
 
-// ====== 提出 ======
+// ====== 提出（強制） ======
 function forceSubmit() {
     if (isSubmitting) return;
     isSubmitting = true;
+    
     if (confirm('本当に試験を終了して提出しますか？')) {
-        showToast('📤 試験を提出しています...', 3000);
+        showLoading('📤 提出中', '結果を表示しています...');
         const checkedRadio = document.querySelector('input[name="choice"]:checked');
         if (checkedRadio && currentQNo <= totalQuestions) {
             const selectedChoice = checkedRadio.value;
@@ -783,11 +840,15 @@ function forceSubmit() {
             })
             .finally(() => {
                 localStorage.removeItem("exam_end_time_id_" + testId);
-                window.location.href = `/student/test/${testId}/submit`;
+                setTimeout(function() {
+                    window.location.href = `/student/test/${testId}/submit`;
+                }, 1000);
             });
         } else {
             localStorage.removeItem("exam_end_time_id_" + testId);
-            window.location.href = `/student/test/${testId}/submit`;
+            setTimeout(function() {
+                window.location.href = `/student/test/${testId}/submit`;
+            }, 1000);
         }
     } else {
         isSubmitting = false;
