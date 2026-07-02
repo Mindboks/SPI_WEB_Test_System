@@ -20,7 +20,7 @@
     </div>
 
     <!-- デバッグ情報表示エリア -->
-    <div id="debug-area" style="background: #fff3cd; border: 1px solid #ffc107; padding: 8px 12px; border-radius: 4px; margin-bottom: 8px; font-size: 0.85rem; display: none;">
+    <div id="debug-area" style="background: #fff3cd; border: 2px solid #ffc107; padding: 10px 16px; border-radius: 4px; margin-bottom: 8px; font-size: 1rem; display: none; position: relative; z-index: 100;">
         <strong>🔍 デバッグ:</strong> <span id="debug-message">読み込み中...</span>
     </div>
 
@@ -111,7 +111,7 @@
         <div style="font-size: 80px; margin-bottom: 20px;">🚫</div>
         <h1 style="font-weight: 700; margin-bottom: 20px;">不正行為が検知されました</h1>
         <p style="font-size: 1.2rem; line-height: 1.8; margin-bottom: 30px;">
-            全画面モードが解除されたため、<br>
+            試験中に画面切り替えが検知されたため、<br>
             この試験は<b>強制終了</b>されました。<br>
             得点は <b>0点（失格）</b> となります。
         </p>
@@ -167,7 +167,26 @@
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
     }
+    /* フォーカス喪失警告 */
+    #focus-warning {
+        display: none;
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(255, 193, 7, 0.95);
+        color: #000;
+        padding: 12px 24px;
+        border-radius: 8px;
+        z-index: 99997;
+        font-weight: bold;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        font-size: 1rem;
+    }
 </style>
+
+<!-- ====== フォーカス警告 ====== -->
+<div id="focus-warning">⚠️ 試験ウィンドウから離れないでください！</div>
 
 <script>
 // ====== デバッグ関数 ======
@@ -214,6 +233,8 @@ let isLoading = false;
 let retryCount = 0;
 const MAX_RETRY = 3;
 let isFullscreen = false;
+let focusLostCount = 0;
+const MAX_FOCUS_LOST = 2;  // 2回以上フォーカス喪失で失格
 
 showDebug(`試験開始: test_id=${testId}, total_q=${totalQuestions}`);
 
@@ -303,9 +324,8 @@ function enterFullscreen() {
 
 fullscreenBtn.addEventListener('click', enterFullscreen);
 
-// 全画面変更イベント（不正検知用 - ただしCtrl+Tabは除外）
+// 全画面変更イベント（不正検知）
 document.addEventListener('fullscreenchange', function() {
-    // 全画面が解除された場合
     if (!document.fullscreenElement && !cheatDetected && isFullscreen) {
         showDebug('⚠️ 全画面が解除されました');
         cheatDetected = true;
@@ -327,20 +347,124 @@ document.addEventListener('fullscreenchange', function() {
     }
 });
 
-// ====== キーボード制御（Ctrl+Tab は許可） ======
+// ====== フォーカス喪失検知（Win+Tab, Alt+Tab, 他アプリ切り替え） ======
+const focusWarning = document.getElementById('focus-warning');
+let focusWarningTimer = null;
+
+window.addEventListener('blur', function() {
+    if (cheatDetected || isSessionError || timeUpFlag || isSubmitting) return;
+    if (!isFullscreen) return;
+    
+    focusLostCount++;
+    showDebug(`⚠️ フォーカス喪失 (${focusLostCount}/${MAX_FOCUS_LOST})`);
+    
+    // 警告表示
+    if (focusWarning) {
+        focusWarning.style.display = 'block';
+        clearTimeout(focusWarningTimer);
+        focusWarningTimer = setTimeout(() => {
+            focusWarning.style.display = 'none';
+        }, 3000);
+    }
+    
+    if (focusLostCount >= MAX_FOCUS_LOST) {
+        // 2回以上フォーカス喪失で失格
+        showDebug('🚫 フォーカス喪失が連続したため失格');
+        cheatDetected = true;
+        
+        fetch(`/student/test/${testId}/cheated`, { 
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        }).catch(() => {});
+        
+        cheatOverlay.style.display = 'flex';
+        localStorage.removeItem("exam_end_time_id_" + testId);
+        
+        setTimeout(() => {
+            window.location.href = '/student_dashboard';
+        }, 3000);
+    }
+});
+
+// フォーカスが戻ったらカウントリセット（注意：リセットしないと累積）
+window.addEventListener('focus', function() {
+    if (focusWarning) {
+        focusWarning.style.display = 'none';
+        clearTimeout(focusWarningTimer);
+    }
+    // フォーカスが戻ったらカウントをリセット（1回の離脱は許容）
+    // ただし、連続して離脱した場合のみ失格
+    if (focusLostCount > 0 && focusLostCount < MAX_FOCUS_LOST) {
+        // 1回だけの離脱はリセット
+        focusLostCount = 0;
+        showDebug('フォーカス復帰 - カウントリセット');
+    }
+});
+
+// ====== キーボード制御 ======
 document.addEventListener('keydown', function(e) {
     if (isSessionError) return;
     
-    // ★★★ Ctrl+Tab は許可（タブ切り替えは禁止しない） ★★★
-    if (e.ctrlKey && e.key === 'Tab') {
-        // 何もしない（許可）
-        return;
+    // ★★★ Winキー (Metaキー) を検知して警告 ★★★
+    if (e.key === 'Meta' || e.key === 'MetaLeft' || e.key === 'MetaRight') {
+        e.preventDefault();
+        showToast('⚠️ Windowsキーは試験中は使用できません。', 3000);
+        // Winキーを押したらフォーカス喪失とみなす
+        focusLostCount++;
+        if (focusLostCount >= MAX_FOCUS_LOST) {
+            cheatDetected = true;
+            fetch(`/student/test/${testId}/cheated`, { method: 'POST' }).catch(() => {});
+            cheatOverlay.style.display = 'flex';
+            localStorage.removeItem("exam_end_time_id_" + testId);
+            setTimeout(() => { window.location.href = '/student_dashboard'; }, 3000);
+        }
+        return false;
     }
     
-    // ★★★ Ctrl+Shift+Tab も許可（逆方向のタブ切り替え） ★★★
+    // ★★★ Ctrl+Tab をブロック（タブ切り替え禁止） ★★★
+    if (e.ctrlKey && e.key === 'Tab') {
+        e.preventDefault();
+        showToast('⚠️ タブ切り替えは試験中は禁止されています。', 3000);
+        // タブ切り替えもフォーカス喪失とみなす
+        focusLostCount++;
+        if (focusLostCount >= MAX_FOCUS_LOST) {
+            cheatDetected = true;
+            fetch(`/student/test/${testId}/cheated`, { method: 'POST' }).catch(() => {});
+            cheatOverlay.style.display = 'flex';
+            localStorage.removeItem("exam_end_time_id_" + testId);
+            setTimeout(() => { window.location.href = '/student_dashboard'; }, 3000);
+        }
+        return false;
+    }
+    
+    // ★★★ Ctrl+Shift+Tab もブロック ★★★
     if (e.ctrlKey && e.shiftKey && e.key === 'Tab') {
-        // 何もしない（許可）
-        return;
+        e.preventDefault();
+        showToast('⚠️ タブ切り替えは試験中は禁止されています。', 3000);
+        focusLostCount++;
+        if (focusLostCount >= MAX_FOCUS_LOST) {
+            cheatDetected = true;
+            fetch(`/student/test/${testId}/cheated`, { method: 'POST' }).catch(() => {});
+            cheatOverlay.style.display = 'flex';
+            localStorage.removeItem("exam_end_time_id_" + testId);
+            setTimeout(() => { window.location.href = '/student_dashboard'; }, 3000);
+        }
+        return false;
+    }
+    
+    // ★★★ Alt+Tab をブロック（Windows アプリ切り替え） ★★★
+    if (e.altKey && e.key === 'Tab') {
+        e.preventDefault();
+        showToast('⚠️ アプリ切り替えは試験中は禁止されています。', 3000);
+        focusLostCount++;
+        if (focusLostCount >= MAX_FOCUS_LOST) {
+            cheatDetected = true;
+            fetch(`/student/test/${testId}/cheated`, { method: 'POST' }).catch(() => {});
+            cheatOverlay.style.display = 'flex';
+            localStorage.removeItem("exam_end_time_id_" + testId);
+            setTimeout(() => { window.location.href = '/student_dashboard'; }, 3000);
+        }
+        return false;
     }
     
     if (!document.fullscreenElement && !cheatDetected) {
@@ -387,14 +511,14 @@ document.addEventListener('keydown', function(e) {
         return false;
     }
     
-    // Ctrl+W (タブ閉じ) - 警告のみ表示してブロック
+    // Ctrl+W (タブ閉じ)
     if (e.ctrlKey && (e.key === 'w' || e.key === 'W')) {
         e.preventDefault();
         showToast('⚠️ 試験中のタブ閉じは禁止されています。', 3000);
         return false;
     }
     
-    // Alt+F4 (ウィンドウ閉じ) - 警告のみ表示
+    // Alt+F4 (ウィンドウ閉じ)
     if (e.altKey && e.key === 'F4') {
         e.preventDefault();
         showToast('⚠️ 試験中のウィンドウ閉じは禁止されています。', 3000);
@@ -500,7 +624,6 @@ function loadQuestion(qNo) {
     isLoading = true;
     currentQNo = qNo;
     
-    // ローディング表示
     document.getElementById("question-text").innerHTML = `
         <div class="text-center py-3">
             <div class="loading-spinner mb-2"></div>
@@ -667,96 +790,3 @@ function submitAnswer(isSkip) {
     .catch(error => {
         showDebug(`回答保存エラー: ${error.message}`);
         showToast('⚠️ 解答の保存に失敗しました。もう一度お試しください。', 4000);
-        nextBtn.disabled = false;
-        nextBtn.classList.remove('btn-saving');
-        nextBtn.classList.add('btn-success');
-        nextBtn.innerHTML = currentQNo >= totalQuestions ? 
-            `最終解答を記録して提出画面へ <i class="bi bi-box-arrow-up"></i>` : 
-            `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
-    });
-}
-
-// ====== ナビゲーション ======
-function renderNavigation(statusList) {
-    const container = document.getElementById("nav-buttons-container");
-    container.innerHTML = "";
-    
-    if (!statusList || statusList.length === 0) {
-        container.innerHTML = '<span class="text-muted">ナビゲーションなし</span>';
-        return;
-    }
-    
-    statusList.forEach(s => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = `btn btn-sm py-1 fw-bold border shadow-sm`;
-        btn.style.width = "55px";
-        btn.style.fontSize = "0.8rem";
-        btn.innerText = `Q${s.q_no}`;
-
-        if (s.q_no === currentQNo) {
-            btn.classList.add("btn-primary", "text-white", "border-primary", "border-2");
-        } else if (s.is_answered) {
-            btn.classList.add("btn-success", "text-white", "border-success");
-        } else {
-            btn.classList.add("btn-light", "text-dark", "border-secondary-subtle");
-        }
-
-        btn.onclick = () => loadQuestion(s.q_no);
-        container.appendChild(btn);
-    });
-}
-
-// ====== 提出 ======
-function forceSubmit() {
-    if (isSubmitting) return;
-    isSubmitting = true;
-    
-    if (confirm('本当に試験を終了して提出しますか？')) {
-        showToast('📤 試験を提出しています...', 3000);
-        const checkedRadio = document.querySelector('input[name="choice"]:checked');
-        if (checkedRadio && currentQNo <= totalQuestions) {
-            const selectedChoice = checkedRadio.value;
-            safeApiCall(`/api/student/test/${testId}/get_question/${currentQNo}`, {
-                method: "POST",
-                body: JSON.stringify({ choice: selectedChoice, skip: false })
-            })
-            .finally(() => {
-                localStorage.removeItem("exam_end_time_id_" + testId);
-                window.location.href = `/student/test/${testId}/submit`;
-            });
-        } else {
-            localStorage.removeItem("exam_end_time_id_" + testId);
-            window.location.href = `/student/test/${testId}/submit`;
-        }
-    } else {
-        isSubmitting = false;
-    }
-}
-
-// ====== 定期的な全画面チェック ======
-setInterval(function() {
-    if (isSessionError || cheatDetected || timeUpFlag) return;
-    if (!document.fullscreenElement && isFullscreen) {
-        // 全画面が意図せず解除された場合のみ
-        showFullscreenBlocker();
-    }
-}, 3000);
-
-// ====== 初期化 ======
-window.addEventListener("load", function() {
-    showDebug('=== ページ読み込み完了 ===');
-    showDebug(`test_id: ${testId}, total_q: ${totalQuestions}`);
-    showDebug(`duration: ${durationMinutes}分`);
-    
-    if (!document.fullscreenElement) {
-        showFullscreenBlocker();
-        showDebug('全画面モード未起動 - ブロッカー表示');
-    } else {
-        isFullscreen = true;
-        showDebug('全画面モード起動済み');
-        loadQuestion(1);
-    }
-});
-</script>
-{% endblock %}
