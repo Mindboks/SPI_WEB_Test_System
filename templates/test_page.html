@@ -19,7 +19,7 @@
         </div>
     </div>
 
-    <!-- デバッグ情報表示エリア -->
+    <!-- デバッグ情報 -->
     <div id="debug-area" style="background: #fff3cd; border: 2px solid #ffc107; padding: 10px 16px; border-radius: 4px; margin-bottom: 8px; font-size: 1rem; display: block; position: relative; z-index: 100;">
         <strong>🔍 デバッグ:</strong> <span id="debug-message">読み込み中...</span>
     </div>
@@ -86,22 +86,8 @@
     </div>
 </div>
 
-<!-- ====== ローディングオーバーレイ（提出時） ====== -->
-<div id="submit-loading" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 100001; display: none; flex-direction: column; justify-content: center; align-items: center; color: white; font-family: 'Noto Sans JP', sans-serif;">
-    <div style="text-align: center;">
-        <div class="spinner-border text-success mb-4" style="width: 4rem; height: 4rem;" role="status">
-            <span class="visually-hidden">Loading...</span>
-        </div>
-        <h2 class="fw-bold text-white" id="loading-title" style="font-size: 2rem;">採点中...</h2>
-        <p class="text-muted mt-3" id="loading-sub" style="font-size: 1.2rem;">しばらくお待ちください</p>
-        <div class="progress mt-4" style="width: 300px; height: 6px;">
-            <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" style="width: 100%"></div>
-        </div>
-    </div>
-</div>
-
 <!-- ====== 全画面ブロッカー ====== -->
-<div id="fullscreen-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 99999; flex-direction: column; justify-content: center; align-items: center; color: white; font-family: 'Noto Sans JP', sans-serif;">
+<div id="fullscreen-overlay" style="display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 99999; flex-direction: column; justify-content: center; align-items: center; color: white; font-family: 'Noto Sans JP', sans-serif;">
     <div style="text-align: center; max-width: 600px; padding: 40px;">
         <div style="font-size: 80px; margin-bottom: 20px;">🔒</div>
         <h1 style="color: #ff6b6b; font-weight: 700; margin-bottom: 20px;">全画面モードが必須です</h1>
@@ -132,6 +118,20 @@
         <button onclick="window.location.href='/student_dashboard'" class="btn btn-light btn-lg fw-bold px-5 py-3 shadow">
             <i class="bi bi-house me-2"></i> ダッシュボードに戻る
         </button>
+    </div>
+</div>
+
+<!-- ====== ローディングオーバーレイ ====== -->
+<div id="submit-loading" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 100001; display: none; flex-direction: column; justify-content: center; align-items: center; color: white; font-family: 'Noto Sans JP', sans-serif;">
+    <div style="text-align: center;">
+        <div class="spinner-border text-success mb-4" style="width: 4rem; height: 4rem;" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <h2 class="fw-bold text-white" id="loading-title" style="font-size: 2rem;">採点中...</h2>
+        <p class="text-muted mt-3" id="loading-sub" style="font-size: 1.2rem;">しばらくお待ちください</p>
+        <div class="progress mt-4" style="width: 300px; height: 6px;">
+            <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" style="width: 100%"></div>
+        </div>
     </div>
 </div>
 
@@ -200,9 +200,6 @@
         cursor: wait;
     }
 </style>
-
-<!-- ====== フォーカス警告 ====== -->
-<div id="focus-warning">⚠️ 試験ウィンドウから離れないでください！</div>
 
 <script>
 // ====== デバッグ関数 ======
@@ -274,22 +271,22 @@ const MAX_FOCUS_LOST = 2;
 showDebug('=== 試験ページ読み込み完了 ===');
 showDebug(`test_id: ${testId}, total_q: ${totalQuestions}`);
 
-// ====== ページ離脱時の警告（修正版） ======
-window.addEventListener('beforeunload', function(e) {
-    // 時間切れフラグまたは提出中は警告を表示しない
-    if (timeUpFlag || isSubmitting) {
-        delete e.returnValue;
-        return;
-    }
-    
-    if (document.fullscreenElement && !cheatDetected && localStorage.getItem("exam_end_time_id_" + testId)) {
-        e.preventDefault();
-        e.returnValue = '試験中です。ページを離れると不正行為とみなされます。';
-        return e.returnValue;
-    }
-});
+// ====== タイマー制御 ======
+let durationMinutes = parseInt("{{ test.duration }}");
+showDebug(`制限時間: ${durationMinutes}分`);
 
-// ====== タイマー制御（修正版） ======
+if (!durationMinutes || durationMinutes <= 0) {
+    durationMinutes = 30;
+    showDebug(`制限時間が不正な値のためデフォルト(30分)を使用`);
+}
+
+let endTime = localStorage.getItem("exam_end_time_id_" + testId);
+if (!endTime) {
+    endTime = new Date().getTime() + durationMinutes * 60 * 1000;
+    localStorage.setItem("exam_end_time_id_" + testId, endTime);
+    showDebug(`タイマー開始: ${durationMinutes}分`);
+}
+
 function updateTimer() {
     let now = new Date().getTime();
     let distance = endTime - now;
@@ -302,7 +299,6 @@ function updateTimer() {
         if (!isSubmitting) {
             isSubmitting = true;
             showLoading('⏰ 制限時間終了', '採点結果を表示しています...');
-            
             const checkedRadio = document.querySelector('input[name="choice"]:checked');
             if (checkedRadio && currentQNo <= totalQuestions) {
                 const selectedChoice = checkedRadio.value;
@@ -335,6 +331,7 @@ function updateTimer() {
         document.getElementById("timer").style.fontWeight = "bold";
     }
 }
+
 let timerInterval = setInterval(updateTimer, 1000);
 updateTimer();
 
@@ -342,6 +339,8 @@ updateTimer();
 const overlay = document.getElementById('fullscreen-overlay');
 const cheatOverlay = document.getElementById('cheat-overlay');
 const fullscreenBtn = document.getElementById('fullscreen-btn');
+
+// ★★★ 全画面ブロッカーを最初に表示（display: flex に変更済み） ★★★
 
 function showFullscreenBlocker() {
     if (overlay) {
@@ -435,7 +434,6 @@ window.addEventListener('focus', function() {
 document.addEventListener('keydown', function(e) {
     if (isSessionError) return;
     
-    // Winキー
     if (e.key === 'Meta' || e.key === 'MetaLeft' || e.key === 'MetaRight') {
         e.preventDefault();
         showToast('⚠️ Windowsキーは試験中は使用できません。', 3000);
@@ -450,7 +448,6 @@ document.addEventListener('keydown', function(e) {
         return false;
     }
     
-    // Ctrl+Tab
     if (e.ctrlKey && e.key === 'Tab') {
         e.preventDefault();
         showToast('⚠️ タブ切り替えは試験中は禁止されています。', 3000);
@@ -465,7 +462,6 @@ document.addEventListener('keydown', function(e) {
         return false;
     }
     
-    // Ctrl+Shift+Tab
     if (e.ctrlKey && e.shiftKey && e.key === 'Tab') {
         e.preventDefault();
         showToast('⚠️ タブ切り替えは試験中は禁止されています。', 3000);
@@ -480,7 +476,6 @@ document.addEventListener('keydown', function(e) {
         return false;
     }
     
-    // Alt+Tab
     if (e.altKey && e.key === 'Tab') {
         e.preventDefault();
         showToast('⚠️ アプリ切り替えは試験中は禁止されています。', 3000);
@@ -558,8 +553,14 @@ window.addEventListener('popstate', function() {
     }
 });
 
+// ====== ページ離脱時の警告（修正版） ======
 window.addEventListener('beforeunload', function(e) {
-    if (document.fullscreenElement && !cheatDetected) {
+    if (timeUpFlag || isSubmitting) {
+        delete e.returnValue;
+        return;
+    }
+    
+    if (document.fullscreenElement && !cheatDetected && localStorage.getItem("exam_end_time_id_" + testId)) {
         e.preventDefault();
         e.returnValue = '試験中です。ページを離れると不正行為とみなされます。';
         return e.returnValue;
@@ -773,10 +774,10 @@ function submitAnswer(isSkip) {
     .then(data => {
         showDebug('回答保存成功');
         if (currentQNo >= totalQuestions) {
-            // 最終問題 → 結果ページへ
             showLoading('📤 提出中', '結果を表示しています...');
+            localStorage.removeItem("exam_end_time_id_" + testId);
             setTimeout(function() {
-                window.location.href = `/student/test/${testId}/submit`;
+                window.location.replace(`/student/test/${testId}/submit`);
             }, 1000);
         } else {
             loadQuestion(currentQNo + 1);
@@ -838,13 +839,13 @@ function forceSubmit() {
             .finally(() => {
                 localStorage.removeItem("exam_end_time_id_" + testId);
                 setTimeout(function() {
-                    window.location.href = `/student/test/${testId}/submit`;
+                    window.location.replace(`/student/test/${testId}/submit`);
                 }, 1000);
             });
         } else {
             localStorage.removeItem("exam_end_time_id_" + testId);
             setTimeout(function() {
-                window.location.href = `/student/test/${testId}/submit`;
+                window.location.replace(`/student/test/${testId}/submit`);
             }, 1000);
         }
     } else {
