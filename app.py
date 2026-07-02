@@ -57,7 +57,7 @@ app.config.update(
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "1.1.2"
+APP_VERSION = "1.1.3"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
@@ -557,21 +557,30 @@ def teacher_view_result(result_id):
 def student_dashboard():
     if session.get('role') != 'student': 
         return redirect(url_for('index'))
-    conn = get_db()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute('SELECT class_id FROM users WHERE id = %s', (session.get('user_id'),))
-    user = cur.fetchone()
-    class_id = user['class_id'] if user else None
-    cur.execute('SELECT * FROM tests WHERE target_class = %s', (class_id,))
-    tests = cur.fetchall()
-    cur.execute('''
-        SELECT r.id, t.name AS test_name, r.score, r.timestamp FROM results r
-        JOIN tests t ON r.test_id = t.id WHERE r.user_id = %s ORDER BY r.timestamp DESC
-    ''', (session.get('user_id'),))
-    my_results = cur.fetchall()
-    cur.close()
-    return_db(conn)
-    return render_template('student_dashboard.html', tests=tests, my_results=my_results)
+    
+    conn = None
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute('SELECT class_id FROM users WHERE id = %s', (session.get('user_id'),))
+        user = cur.fetchone()
+        class_id = user['class_id'] if user else None
+        cur.execute('SELECT * FROM tests WHERE target_class = %s', (class_id,))
+        tests = cur.fetchall()
+        cur.execute('''
+            SELECT r.id, t.name AS test_name, r.score, r.timestamp FROM results r
+            JOIN tests t ON r.test_id = t.id WHERE r.user_id = %s ORDER BY r.timestamp DESC
+        ''', (session.get('user_id'),))
+        my_results = cur.fetchall()
+        cur.close()
+        return_db(conn)  # ← これを追加
+        return render_template('student_dashboard.html', tests=tests, my_results=my_results)
+    except Exception as e:
+        print(f"【エラー】student_dashboard: {e}")
+        return render_template('student_dashboard.html', tests=[], my_results=[])
+    finally:
+        if conn:
+            return_db(conn)  # ← 念のためfinallyでも
 
 # ========== テスト開始（ランダム出題対応） ==========
 @app.route('/student/test/<int:test_id>/start', methods=['GET', 'POST'])
@@ -646,52 +655,62 @@ def api_get_question(test_id, q_no):
     else:
         actual_q_no = q_no
     
-    conn = get_db()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    
-    if request.method == 'POST':
-        data = request.get_json() or {}
-        ans_dict = session[session_key]
-        q_no_str = str(actual_q_no)
-        if q_no_str not in ans_dict or ans_dict[q_no_str] == "":
-            if data.get('skip'):
-                ans_dict[q_no_str] = ""
+    conn = None
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        if request.method == 'POST':
+            data = request.get_json() or {}
+            ans_dict = session[session_key]
+            q_no_str = str(actual_q_no)
+            if q_no_str not in ans_dict or ans_dict[q_no_str] == "":
+                if data.get('skip'):
+                    ans_dict[q_no_str] = ""
+                else:
+                    ans_dict[q_no_str] = str(data.get('choice', ''))
+                session[session_key] = ans_dict
+                session.modified = True
+                print(f"【保存】ユーザー{user_id}, 表示問題{q_no}(実際{actual_q_no}), 回答: {ans_dict[q_no_str]}")
             else:
-                ans_dict[q_no_str] = str(data.get('choice', ''))
-            session[session_key] = ans_dict
-            session.modified = True
-            print(f"【保存】ユーザー{user_id}, 表示問題{q_no}(実際{actual_q_no}), 回答: {ans_dict[q_no_str]}")
-        else:
-            print(f"【警告】ユーザー{user_id}, 表示問題{q_no}(実際{actual_q_no})は既に回答済み")
+                print(f"【警告】ユーザー{user_id}, 表示問題{q_no}(実際{actual_q_no})は既に回答済み")
 
-    cur.execute('SELECT * FROM questions WHERE test_id = %s AND q_no = %s', (test_id, actual_q_no))
-    q = cur.fetchone()
-    cur.close()
-    return_db(conn)
-    
-    if not q:
-        return jsonify({'error': 'Question not found'}), 404
+        cur.execute('SELECT * FROM questions WHERE test_id = %s AND q_no = %s', (test_id, actual_q_no))
+        q = cur.fetchone()
+        cur.close()
+        
+        if not q:
+            return jsonify({'error': 'Question not found'}), 404
 
-    ans_dict = session.get(session_key, {})
-    status_list = []
-    total_q = len(question_order) if question_order else 0
-    for i in range(1, total_q + 1):
-        if question_order and i <= len(question_order):
-            actual = question_order[i - 1]
-            is_answered = str(actual) in ans_dict and ans_dict[str(actual)] != ""
-        else:
-            is_answered = False
-        status_list.append({'q_no': i, 'is_answered': is_answered})
+        ans_dict = session.get(session_key, {})
+        status_list = []
+        total_q = len(question_order) if question_order else 0
+        for i in range(1, total_q + 1):
+            if question_order and i <= len(question_order):
+                actual = question_order[i - 1]
+                is_answered = str(actual) in ans_dict and ans_dict[str(actual)] != ""
+            else:
+                is_answered = False
+            status_list.append({'q_no': i, 'is_answered': is_answered})
 
-    return jsonify({
-        'q_no': q_no,
-        'category': q['category'],
-        'question': q['question'],
-        'target': q.get('target', ''),
-        'choices': {f'a{i}': q[f'a{i}'] for i in range(1, 11) if q.get(f'a{i}')},
-        'current_answer': ans_dict.get(str(actual_q_no), ''),
-        'status_list': status_list
-    })
+        return jsonify({
+            'q_no': q_no,
+            'category': q['category'],
+            'question': q['question'],
+            'target': q.get('target', ''),
+            'choices': {f'a{i}': q[f'a{i}'] for i in range(1, 11) if q.get(f'a{i}')},
+            'current_answer': ans_dict.get(str(actual_q_no), ''),
+            'status_list': status_list
+        })
+        
+    except Exception as e:
+        print(f"【エラー】api_get_question: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            return_db(conn)
 
 # ========== テスト提出 ==========
 @app.route('/student/test/<int:test_id>/submit', methods=['GET', 'POST'])
@@ -874,14 +893,22 @@ def cheated_test(test_id):
         return jsonify({'error': 'Unauthorized'}), 401
     if not session.get('user_id'):
         return jsonify({'error': 'Not logged in'}), 401
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute('INSERT INTO results (test_id, user_id, score, details, timestamp) VALUES (%s, %s, %s, %s, NOW())',
-                (test_id, session.get('user_id'), 0, json.dumps({"labels": [], "scores": []})))
-    conn.commit()
-    cur.close()
-    return_db(conn)
-    return jsonify({'status': 'ok', 'redirect_url': url_for('student_dashboard')})
+    
+    conn = None
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute('INSERT INTO results (test_id, user_id, score, details, timestamp) VALUES (%s, %s, %s, %s, NOW())',
+                    (test_id, session.get('user_id'), 0, json.dumps({"labels": [], "scores": []})))
+        conn.commit()
+        cur.close()
+        return jsonify({'status': 'ok', 'redirect_url': url_for('student_dashboard')})
+    except Exception as e:
+        print(f"【エラー】cheated_test: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            return_db(conn)  # ← finallyで確実に返却
 
 @app.route('/student/test/<int:test_id>/abandon', methods=['POST'])
 def abandon_test(test_id):
