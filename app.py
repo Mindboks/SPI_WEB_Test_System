@@ -11,6 +11,7 @@ import datetime
 import psycopg2
 import threading
 import random
+from psycopg2 import pool
 from collections import OrderedDict
 from psycopg2.extras import RealDictCursor
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
@@ -56,7 +57,7 @@ app.config.update(
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.1.2"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
@@ -81,12 +82,30 @@ def to_jst_filter(value):
         value = value.replace(tzinfo=pytz.UTC)
     return value.astimezone(jst).strftime('%Y-%m-%d %H:%M:%S')
 
-# ========== データベース接続関数 ==========
-def get_db():
+# ====== データベース接続プール ======
+connection_pool = None
+
+def init_connection_pool():
+    """接続プールを初期化（アプリ起動時に1回だけ）"""
+    global connection_pool
     db_url = os.environ.get('DATABASE_URL')
     if not db_url:
-        raise ValueError("DATABASE_URLが設定されていません")   
-    conn = psycopg2.connect(db_url)
+        raise ValueError("DATABASE_URLが設定されていません")
+    
+    # 最小5、最大20の接続プール
+    connection_pool = pool.SimpleConnectionPool(
+        5, 20,
+        dsn=db_url
+    )
+    print(f"【DBプール】初期化完了 (最小5, 最大20)")
+
+def get_db():
+    """接続プールから接続を取得"""
+    global connection_pool
+    if connection_pool is None:
+        init_connection_pool()
+    
+    conn = connection_pool.getconn()
     
     # タイムゾーンを日本時間に設定
     try:
@@ -97,6 +116,12 @@ def get_db():
         print(f"タイムゾーン設定エラー: {e}")
     
     return conn
+
+def return_db(conn):
+    """接続をプールに返却"""
+    global connection_pool
+    if connection_pool and conn:
+        connection_pool.putconn(conn)
 
 def hash_password(password):
     return hashlib.sha256((password or "").encode('utf-8')).hexdigest()
@@ -109,7 +134,7 @@ def update_user_password(user_id, new_password):
     updated = cur.rowcount > 0
     conn.commit()
     cur.close()
-    conn.close()
+    return_db(conn)
     return updated
 
 @app.route('/api/check_session', methods=['GET'])
@@ -270,12 +295,6 @@ def before_request():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    
-    # 公開パス
-    public_paths = ['/', '/login', '/logout', '/register', '/password_reset']
-    if request.path in public_paths:
-        return
-    
     # セッション確認
     if 'user_id' not in session:
         return redirect(url_for('login'))
@@ -300,7 +319,7 @@ def login():
             cur.execute('SELECT * FROM users WHERE id = %s', (u_id,))
             user = cur.fetchone()
             cur.close()
-            conn.close()
+            return_db(conn)
             if user and user['password'] == hashed_pwd:
                 session.clear()
                 session.update({
@@ -456,12 +475,12 @@ def teacher_admin():
                     inserted_count += 1
                 conn.commit()
                 cur.close()
-                conn.close()
+                return_db(conn)
                 flash(f'「{t_name}」を正常に登録しました。（{inserted_count}問登録）')
             except Exception as e:
                 if conn:
                     conn.rollback()
-                    conn.close()
+                    return_db(conn)
                 flash(f'CSV登録エラー: {str(e)}')
         return redirect(url_for('teacher_admin'))
     # GET処理
@@ -482,7 +501,7 @@ def teacher_admin():
                     ORDER BY t.name ASC, u.class_id ASC, u.id ASC''')
         results = cur.fetchall()
         cur.close()
-        conn.close()
+        return_db(conn)
     except Exception as e:
         print(f"データ取得エラー: {e}")
 
@@ -504,7 +523,7 @@ def delete_test(test_id):
     cur.execute('DELETE FROM tests WHERE id = %s', (test_id,))
     conn.commit()
     cur.close()
-    conn.close()
+    return_db(conn)
     flash('テストと関連するすべての結果を削除しました。')
     return redirect(url_for('teacher_admin'))
 
@@ -523,7 +542,7 @@ def teacher_view_result(result_id):
     ''', (result_id,))
     res = cur.fetchone()
     cur.close()
-    conn.close()
+    return_db(conn)
     if not res:
         flash("結果が見つかりません。")
         return redirect(url_for('teacher_admin'))
@@ -551,7 +570,7 @@ def student_dashboard():
     ''', (session.get('user_id'),))
     my_results = cur.fetchall()
     cur.close()
-    conn.close()
+    return_db(conn)
     return render_template('student_dashboard.html', tests=tests, my_results=my_results)
 
 # ========== テスト開始（ランダム出題対応） ==========
@@ -590,7 +609,7 @@ def take_test(test_id):
         total_q = len(q_numbers)
         
         cur.close()
-        conn.close()
+        return_db(conn)
         
         duration = int(test.get('duration', 30))
         
@@ -601,7 +620,7 @@ def take_test(test_id):
                               duration=duration)
     except Exception as e:
         if conn: 
-            conn.close()
+            return_db(conn)
         print(f"【エラー】take_test: {e}")
         import traceback
         traceback.print_exc()
@@ -648,7 +667,7 @@ def api_get_question(test_id, q_no):
     cur.execute('SELECT * FROM questions WHERE test_id = %s AND q_no = %s', (test_id, actual_q_no))
     q = cur.fetchone()
     cur.close()
-    conn.close()
+    return_db(conn)
     
     if not q:
         return jsonify({'error': 'Question not found'}), 404
@@ -747,7 +766,7 @@ def submit_test(test_id):
         result_id = cur.fetchone()['id']
         conn.commit()
         cur.close()
-        conn.close()
+        return_db(conn)
         
         session.pop(session_key, None)
         session.pop('current_test_id', None)
@@ -759,7 +778,7 @@ def submit_test(test_id):
     except Exception as e:
         if conn:
             conn.rollback()
-            conn.close()
+            return_db(conn)
         print(f"【エラー】submit_test: {e}")
         import traceback
         traceback.print_exc()
@@ -784,7 +803,7 @@ def api_get_ai_comment(result_id):
         ''', (result_id,))
         res = cur.fetchone()
         cur.close()
-        conn.close()
+        return_db(conn)
         if not res:
             return jsonify({'error': 'Not found'}), 404
         if res.get('comment'):
@@ -802,7 +821,7 @@ def api_get_ai_comment(result_id):
         cur2.execute('UPDATE results SET comment = %s WHERE id = %s', (comment, result_id))
         conn2.commit()
         cur2.close()
-        conn2.close()
+        return_db(conn2)
         return jsonify({'comment': comment})
     except Exception as e:
         print(f"AI comment error: {e}")
@@ -827,7 +846,7 @@ def show_result(test_id, result_id):
         test = cur.fetchone()
         test_name = test['name'] if test else "不明なテスト"
         cur.close()
-        conn.close()
+        return_db(conn)
         if not res:
             flash("結果が見つかりません。")
             return redirect(url_for('student_dashboard'))
@@ -842,7 +861,7 @@ def show_result(test_id, result_id):
             test_name=test_name)
     except Exception as e:
         if conn:
-            conn.close()
+            return_db(conn)
         print(f"【エラー】show_result: {e}")
         import traceback
         traceback.print_exc()
@@ -861,7 +880,7 @@ def cheated_test(test_id):
                 (test_id, session.get('user_id'), 0, json.dumps({"labels": [], "scores": []})))
     conn.commit()
     cur.close()
-    conn.close()
+    return_db(conn)
     return jsonify({'status': 'ok', 'redirect_url': url_for('student_dashboard')})
 
 @app.route('/student/test/<int:test_id>/abandon', methods=['POST'])
@@ -1031,7 +1050,7 @@ def delete_old_test_data():
     cur.execute('DELETE FROM results WHERE timestamp < NOW() - INTERVAL \'30 days\'')
     conn.commit()
     cur.close()
-    conn.close()
+    return_db(conn)
     print(f"【自動削除】古いテストデータを削除しました（{datetime.datetime.now()}）")
 
 scheduler = BackgroundScheduler()
@@ -1039,6 +1058,8 @@ scheduler.add_job(delete_old_test_data, 'cron', hour=0, minute=0)
 scheduler.start()
 
 # ========== サーバー起動 ==========
+# アプリ起動時に接続プールを初期化
+init_connection_pool()
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=False)
