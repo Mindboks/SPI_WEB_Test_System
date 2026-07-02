@@ -154,7 +154,6 @@
         #question-text { max-height: 100px; font-size: 1rem; }
         #choices-container { max-height: 300px; }
     }
-    /* ローディングスピナー */
     .loading-spinner {
         display: inline-block;
         width: 40px;
@@ -182,7 +181,6 @@ function showDebug(message) {
     }
 }
 
-// ====== トースト通知 ======
 function showToast(message, duration = 4000) {
     const toast = document.getElementById('toast-message');
     const text = document.getElementById('toast-text');
@@ -215,6 +213,7 @@ let isSessionError = false;
 let isLoading = false;
 let retryCount = 0;
 const MAX_RETRY = 3;
+let isFullscreen = false;
 
 showDebug(`試験開始: test_id=${testId}, total_q=${totalQuestions}`);
 
@@ -290,9 +289,9 @@ function enterFullscreen() {
     if (elem.requestFullscreen) {
         elem.requestFullscreen()
             .then(() => {
+                isFullscreen = true;
                 hideFullscreenBlocker();
                 showDebug('全画面モード有効化');
-                // 全画面になったら問題を読み込む
                 loadQuestion(1);
             })
             .catch((err) => {
@@ -304,9 +303,10 @@ function enterFullscreen() {
 
 fullscreenBtn.addEventListener('click', enterFullscreen);
 
-// 全画面変更イベント
+// 全画面変更イベント（不正検知用 - ただしCtrl+Tabは除外）
 document.addEventListener('fullscreenchange', function() {
-    if (!document.fullscreenElement && !cheatDetected) {
+    // 全画面が解除された場合
+    if (!document.fullscreenElement && !cheatDetected && isFullscreen) {
         showDebug('⚠️ 全画面が解除されました');
         cheatDetected = true;
         
@@ -322,7 +322,125 @@ document.addEventListener('fullscreenchange', function() {
             window.location.href = '/student_dashboard';
         }, 3000);
     } else if (document.fullscreenElement) {
+        isFullscreen = true;
         showDebug('全画面モード復元');
+    }
+});
+
+// ====== キーボード制御（Ctrl+Tab は許可） ======
+document.addEventListener('keydown', function(e) {
+    if (isSessionError) return;
+    
+    // ★★★ Ctrl+Tab は許可（タブ切り替えは禁止しない） ★★★
+    if (e.ctrlKey && e.key === 'Tab') {
+        // 何もしない（許可）
+        return;
+    }
+    
+    // ★★★ Ctrl+Shift+Tab も許可（逆方向のタブ切り替え） ★★★
+    if (e.ctrlKey && e.shiftKey && e.key === 'Tab') {
+        // 何もしない（許可）
+        return;
+    }
+    
+    if (!document.fullscreenElement && !cheatDetected) {
+        if (overlay) overlay.style.display = 'flex';
+        e.preventDefault();
+        return false;
+    }
+    
+    // ブロックするキー（F11, Esc, F12 など）
+    const blockedKeys = ['F11', 'F12', 'Escape', 'PrintScreen', 'ContextMenu'];
+    if (blockedKeys.includes(e.key)) {
+        e.preventDefault();
+        return false;
+    }
+    
+    // Ctrl+Shift+I (DevTools)
+    if (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i')) {
+        e.preventDefault();
+        return false;
+    }
+    
+    // Ctrl+U (ページソース)
+    if (e.ctrlKey && (e.key === 'U' || e.key === 'u')) {
+        e.preventDefault();
+        return false;
+    }
+    
+    // Ctrl+S (保存)
+    if (e.ctrlKey && (e.key === 'S' || e.key === 's')) {
+        e.preventDefault();
+        return false;
+    }
+    
+    // Ctrl+P (印刷)
+    if (e.ctrlKey && (e.key === 'P' || e.key === 'p')) {
+        e.preventDefault();
+        return false;
+    }
+    
+    // F5 / Ctrl+R (リロード)
+    if (e.key === 'F5' || (e.ctrlKey && e.key === 'r') || (e.ctrlKey && e.shiftKey && e.key === 'R')) {
+        e.preventDefault();
+        showToast('⚠️ 試験中のリロードは禁止されています。', 3000);
+        return false;
+    }
+    
+    // Ctrl+W (タブ閉じ) - 警告のみ表示してブロック
+    if (e.ctrlKey && (e.key === 'w' || e.key === 'W')) {
+        e.preventDefault();
+        showToast('⚠️ 試験中のタブ閉じは禁止されています。', 3000);
+        return false;
+    }
+    
+    // Alt+F4 (ウィンドウ閉じ) - 警告のみ表示
+    if (e.altKey && e.key === 'F4') {
+        e.preventDefault();
+        showToast('⚠️ 試験中のウィンドウ閉じは禁止されています。', 3000);
+        return false;
+    }
+});
+
+// コンテキストメニュー（右クリック）無効化
+document.addEventListener('contextmenu', function(e) {
+    if (!cheatDetected) {
+        e.preventDefault();
+        return false;
+    }
+});
+
+// コピー無効化
+document.addEventListener('copy', function(e) {
+    if (!cheatDetected) {
+        e.preventDefault();
+        return false;
+    }
+});
+
+// 選択無効化
+document.addEventListener('selectstart', function(e) {
+    if (!cheatDetected) {
+        e.preventDefault();
+        return false;
+    }
+});
+
+// 戻るボタン制御
+history.pushState(null, null, location.href);
+window.addEventListener('popstate', function() {
+    if (!cheatDetected && !isSessionError) {
+        history.pushState(null, null, location.href);
+        showToast('⚠️ 試験中のページ遷移は禁止されています。', 3000);
+    }
+});
+
+// ページ離脱
+window.addEventListener('beforeunload', function(e) {
+    if (document.fullscreenElement && !cheatDetected) {
+        e.preventDefault();
+        e.returnValue = '試験中です。ページを離れると不正行為とみなされます。';
+        return e.returnValue;
     }
 });
 
@@ -443,16 +561,10 @@ function loadQuestion(qNo) {
 }
 
 function displayQuestion(data) {
-    // 問題番号
     document.getElementById("q-no-badge").innerText = `問 ${data.q_no} / 全 ${totalQuestions} 問`;
-    
-    // カテゴリ
     document.getElementById("category-badge").innerText = `カテゴリ: ${data.category || '未分類'}`;
-    
-    // 問題文
     document.getElementById("question-text").innerHTML = data.question || '（問題文がありません）';
     
-    // ターゲット
     const targetArea = document.getElementById("target-area");
     const targetBox = document.getElementById("target-box");
     if (data.target && data.target.trim() !== "") {
@@ -462,7 +574,6 @@ function displayQuestion(data) {
         targetArea.style.display = "none";
     }
     
-    // 次へボタン
     const nextBtn = document.getElementById("next-btn");
     if (currentQNo >= totalQuestions) {
         nextBtn.innerHTML = `最終解答を記録して提出画面へ <i class="bi bi-box-arrow-up"></i>`;
@@ -473,7 +584,6 @@ function displayQuestion(data) {
     nextBtn.classList.remove('btn-saving');
     nextBtn.classList.add('btn-success');
     
-    // 選択肢
     const container = document.getElementById("choices-container");
     container.innerHTML = "";
     
@@ -507,7 +617,6 @@ function displayQuestion(data) {
         container.appendChild(col);
     });
     
-    // ナビゲーション
     renderNavigation(data.status_list || []);
 }
 
@@ -547,7 +656,6 @@ function submitAnswer(isSkip) {
     .then(data => {
         showDebug('回答保存成功');
         if (currentQNo >= totalQuestions) {
-            // 最終問題 → 提出
             showToast('📤 最終問題を提出します...', 2000);
             setTimeout(() => {
                 window.location.href = `/student/test/${testId}/submit`;
@@ -626,76 +734,11 @@ function forceSubmit() {
     }
 }
 
-// ====== キーボード制御 ======
-document.addEventListener('keydown', function(e) {
-    if (isSessionError) return;
-    
-    if (!document.fullscreenElement && !cheatDetected) {
-        if (overlay) overlay.style.display = 'flex';
-        e.preventDefault();
-        return false;
-    }
-    
-    const blockedKeys = ['F11', 'F12', 'Escape', 'PrintScreen', 'ContextMenu'];
-    if (blockedKeys.includes(e.key)) {
-        e.preventDefault();
-        return false;
-    }
-    if (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i')) {
-        e.preventDefault();
-        return false;
-    }
-    if (e.ctrlKey && (e.key === 'U' || e.key === 'u')) {
-        e.preventDefault();
-        return false;
-    }
-    if (e.ctrlKey && (e.key === 'S' || e.key === 's')) {
-        e.preventDefault();
-        return false;
-    }
-    if (e.key === 'F5' || (e.ctrlKey && e.key === 'r')) {
-        e.preventDefault();
-        showToast('⚠️ 試験中のリロードは禁止されています。', 3000);
-        return false;
-    }
-});
-
-document.addEventListener('contextmenu', function(e) {
-    if (!cheatDetected) {
-        e.preventDefault();
-        return false;
-    }
-});
-
-document.addEventListener('copy', function(e) {
-    if (!cheatDetected) {
-        e.preventDefault();
-        return false;
-    }
-});
-
-// 戻るボタン制御
-history.pushState(null, null, location.href);
-window.addEventListener('popstate', function() {
-    if (!cheatDetected && !isSessionError) {
-        history.pushState(null, null, location.href);
-        showToast('⚠️ 試験中のページ遷移は禁止されています。', 3000);
-    }
-});
-
-// ページ離脱
-window.addEventListener('beforeunload', function(e) {
-    if (document.fullscreenElement && !cheatDetected) {
-        e.preventDefault();
-        e.returnValue = '試験中です。ページを離れると不正行為とみなされます。';
-        return e.returnValue;
-    }
-});
-
 // ====== 定期的な全画面チェック ======
 setInterval(function() {
     if (isSessionError || cheatDetected || timeUpFlag) return;
-    if (!document.fullscreenElement) {
+    if (!document.fullscreenElement && isFullscreen) {
+        // 全画面が意図せず解除された場合のみ
         showFullscreenBlocker();
     }
 }, 3000);
@@ -706,11 +749,11 @@ window.addEventListener("load", function() {
     showDebug(`test_id: ${testId}, total_q: ${totalQuestions}`);
     showDebug(`duration: ${durationMinutes}分`);
     
-    // 全画面チェック
     if (!document.fullscreenElement) {
         showFullscreenBlocker();
         showDebug('全画面モード未起動 - ブロッカー表示');
     } else {
+        isFullscreen = true;
         showDebug('全画面モード起動済み');
         loadQuestion(1);
     }
