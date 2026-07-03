@@ -51,8 +51,8 @@ app.config.update(
     SESSION_COOKIE_SECURE=True,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
-    PERMANENT_SESSION_LIFETIME=7200,  # 2時間に延長
-    SESSION_COOKIE_DOMAIN='.cbtsy.com',  # ← 追加（wwwあり/なし両方対応）
+    PERMANENT_SESSION_LIFETIME=7200,
+    SESSION_COOKIE_DOMAIN='.cbtsy.com',
     SESSION_COOKIE_PERMANENT=True,
 )
 
@@ -92,7 +92,6 @@ def init_connection_pool():
     if not db_url:
         raise ValueError("DATABASE_URLが設定されていません")
     
-    # 最小5、最大20の接続プール
     connection_pool = pool.SimpleConnectionPool(
         5, 20,
         dsn=db_url
@@ -107,7 +106,6 @@ def get_db():
     
     conn = connection_pool.getconn()
     
-    # タイムゾーンを日本時間に設定
     try:
         cur = conn.cursor()
         cur.execute("SET TIME ZONE 'Asia/Tokyo'")
@@ -276,10 +274,10 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
         print(f"【Geminiエラー】: {e}")
         return generate_ai_comment(score, details_data)
 
-# ========== リクエスト前処理（1つに統合） ==========
+# ========== リクエスト前処理（修正済み） ==========
 @app.before_request
 def before_request():
-    # ★★★ HTTP→HTTPS強制リダイレクト ★★★
+    # HTTP→HTTPS強制リダイレクト
     if request.headers.get('X-Forwarded-Proto') == 'http':
         return redirect(request.url.replace('http://', 'https://'), 301)
     
@@ -287,15 +285,12 @@ def before_request():
     if request.path.startswith('/static'):
         return
     
-    # 公開パス
+    # 認証不要な公開パス
     public_paths = ['/', '/login', '/logout', '/register', '/password_reset']
     if request.path in public_paths:
         return
     
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
-    # セッション確認
+    # セッション確認（ここに到達するのは公開パス以外のみ）
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
@@ -493,7 +488,6 @@ def teacher_admin():
         cur.execute('SELECT * FROM tests ORDER BY id DESC')
         tests = cur.fetchall()
         
-        # ★★★ ここを修正 ★★★
         cur.execute('''SELECT r.id, t.name AS test_name, u.class_id, u.id AS student_id, u.name AS student_name, r.score, r.timestamp 
                     FROM results r 
                     JOIN tests t ON r.test_id = t.id 
@@ -573,14 +567,14 @@ def student_dashboard():
         ''', (session.get('user_id'),))
         my_results = cur.fetchall()
         cur.close()
-        return_db(conn)  # ← これを追加
+        return_db(conn)
         return render_template('student_dashboard.html', tests=tests, my_results=my_results)
     except Exception as e:
         print(f"【エラー】student_dashboard: {e}")
         return render_template('student_dashboard.html', tests=[], my_results=[])
     finally:
         if conn:
-            return_db(conn)  # ← 念のためfinallyでも
+            return_db(conn)
 
 # ========== テスト開始（ランダム出題対応） ==========
 @app.route('/student/test/<int:test_id>/start', methods=['GET', 'POST'])
@@ -908,7 +902,7 @@ def cheated_test(test_id):
         return jsonify({'error': str(e)}), 500
     finally:
         if conn:
-            return_db(conn)  # ← finallyで確実に返却
+            return_db(conn)
 
 @app.route('/student/test/<int:test_id>/abandon', methods=['POST'])
 def abandon_test(test_id):
