@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-20 version2.9.5
+#2026-4-11~2026-6-20 version2.9.7
 # -*- coding: utf-8 -*-
 import os
 import csv
@@ -48,16 +48,16 @@ app.secret_key = os.environ.get('SECRET_KEY', 'default_secret_key_for_production
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 app.config.update(
-    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_SECURE=False,  # ★★★ 開発環境ではFalse（RenderではTrue） ★★★
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
     PERMANENT_SESSION_LIFETIME=7200,
-    SESSION_COOKIE_DOMAIN='.cbtsy.com',
+    SESSION_COOKIE_DOMAIN=None,  # ★★★ ドメイン指定を一旦削除 ★★★
     SESSION_COOKIE_PERMANENT=True,
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "1.1.3"
+APP_VERSION = "1.1.4"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
@@ -274,10 +274,10 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
         print(f"【Geminiエラー】: {e}")
         return generate_ai_comment(score, details_data)
 
-# ========== リクエスト前処理（修正済み） ==========
+# ========== リクエスト前処理（シンプル版） ==========
 @app.before_request
 def before_request():
-    # HTTP→HTTPS強制リダイレクト
+    # HTTP→HTTPS強制リダイレクト（本番環境のみ）
     if request.headers.get('X-Forwarded-Proto') == 'http':
         return redirect(request.url.replace('http://', 'https://'), 301)
     
@@ -290,7 +290,7 @@ def before_request():
     if request.path in public_paths:
         return
     
-    # セッション確認（ここに到達するのは公開パス以外のみ）
+    # セッション確認（公開パス以外はログイン必須）
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
@@ -478,13 +478,20 @@ def teacher_admin():
                     return_db(conn)
                 flash(f'CSV登録エラー: {str(e)}')
         return redirect(url_for('teacher_admin'))
+    
     # GET処理
     tests, results, classes = [], [], []
     try:
         conn = get_db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT DISTINCT class_id FROM users WHERE class_id IS NOT NULL AND class_id != 'teacher' ORDER BY class_id ASC")
-        classes = [row['class_id'] for row in cur.fetchall()]
+        
+        # クラス一覧を取得
+        cur.execute("SELECT DISTINCT class_id FROM users WHERE class_id IS NOT NULL AND class_id != '' AND class_id != 'teacher' ORDER BY class_id ASC")
+        classes_data = cur.fetchall()
+        classes = [row['class_id'] for row in classes_data] if classes_data else []
+        
+        print(f"【デバッグ】取得したクラス一覧: {classes}")
+        
         cur.execute('SELECT * FROM tests ORDER BY id DESC')
         tests = cur.fetchall()
         
@@ -494,10 +501,14 @@ def teacher_admin():
                     JOIN users u ON r.user_id = u.id 
                     ORDER BY t.name ASC, u.class_id ASC, u.id ASC''')
         results = cur.fetchall()
+        
         cur.close()
         return_db(conn)
+        
     except Exception as e:
-        print(f"データ取得エラー: {e}")
+        print(f"【エラー】データ取得エラー: {e}")
+        import traceback
+        traceback.print_exc()
 
     return render_template('admin.html', 
         tests=tests, 
