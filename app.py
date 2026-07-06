@@ -82,7 +82,7 @@ def to_jst_filter(value):
         value = value.replace(tzinfo=pytz.UTC)
     return value.astimezone(jst).strftime('%Y-%m-%d %H:%M:%S')
 
-# ====== データベース接続プール ======
+# ====== データベース接続プール（修正版） ======
 connection_pool = None
 
 def init_connection_pool():
@@ -92,11 +92,13 @@ def init_connection_pool():
     if not db_url:
         raise ValueError("DATABASE_URLが設定されていません")
     
+    # SSL接続設定を追加
     connection_pool = pool.SimpleConnectionPool(
         5, 20,
-        dsn=db_url
+        dsn=db_url,
+        sslmode='require'  # SSLを強制
     )
-    print(f"【DBプール】初期化完了 (最小5, 最大20)")
+    print(f"【DBプール】初期化完了 (最小5, 最大20, SSLモード: require)")
 
 def get_db():
     """接続プールから接続を取得"""
@@ -106,14 +108,25 @@ def get_db():
     
     conn = connection_pool.getconn()
     
+    # タイムゾーン設定（エラーを無視）
     try:
         cur = conn.cursor()
         cur.execute("SET TIME ZONE 'Asia/Tokyo'")
         cur.close()
     except Exception as e:
-        print(f"タイムゾーン設定エラー: {e}")
+        # タイムゾーン設定エラーは無視（SSLエラーが発生しても続行）
+        print(f"【警告】タイムゾーン設定エラー（無視します）: {e}")
     
     return conn
+
+def return_db(conn):
+    """接続をプールに返却"""
+    global connection_pool
+    if connection_pool and conn:
+        try:
+            connection_pool.putconn(conn)
+        except Exception as e:
+            print(f"【警告】接続返却エラー: {e}")
 
 def return_db(conn):
     """接続をプールに返却"""
@@ -374,6 +387,7 @@ def teacher_admin():
     if session.get('role') != 'teacher': 
         return redirect(url_for('index'))
     
+    # ========== POST処理（テスト登録） ==========
     if request.method == 'POST':
         t_name = request.form.get('test_name')
         t_class = request.form.get('target_class')
@@ -479,22 +493,34 @@ def teacher_admin():
                 flash(f'CSV登録エラー: {str(e)}')
         return redirect(url_for('teacher_admin'))
     
-    # GET処理
+    # ========== GET処理（管理画面表示） ==========
     tests, results, classes = [], [], []
+    conn = None
     try:
         conn = get_db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
         # クラス一覧を取得
-        cur.execute("SELECT DISTINCT class_id FROM users WHERE class_id IS NOT NULL AND class_id != '' AND class_id != 'teacher' ORDER BY class_id ASC")
+        cur.execute("""
+            SELECT DISTINCT class_id 
+            FROM users 
+            WHERE class_id IS NOT NULL 
+              AND class_id != '' 
+              AND class_id != 'teacher'
+            ORDER BY class_id ASC
+        """)
         classes_data = cur.fetchall()
         classes = [row['class_id'] for row in classes_data] if classes_data else []
         
+        # デバッグ出力
         print(f"【デバッグ】取得したクラス一覧: {classes}")
+        print(f"【デバッグ】クラス数: {len(classes)}")
         
+        # テスト一覧を取得
         cur.execute('SELECT * FROM tests ORDER BY id DESC')
         tests = cur.fetchall()
         
+        # 結果一覧を取得
         cur.execute('''SELECT r.id, t.name AS test_name, u.class_id, u.id AS student_id, u.name AS student_name, r.score, r.timestamp 
                     FROM results r 
                     JOIN tests t ON r.test_id = t.id 
@@ -509,6 +535,11 @@ def teacher_admin():
         print(f"【エラー】データ取得エラー: {e}")
         import traceback
         traceback.print_exc()
+        if conn:
+            try:
+                return_db(conn)
+            except:
+                pass
 
     return render_template('admin.html', 
         tests=tests, 
@@ -516,6 +547,8 @@ def teacher_admin():
         classes=classes,
         app_version=APP_VERSION
     )
+
+
 
 @app.route('/teacher/delete_test/<int:test_id>', methods=['POST'])
 def delete_test(test_id):
