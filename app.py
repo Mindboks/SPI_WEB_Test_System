@@ -92,12 +92,13 @@ def init_connection_pool():
     if not db_url:
         raise ValueError("DATABASE_URLが設定されていません")
     
+    # ★★★ SSLモードを 'prefer' に変更（SSLを試みるが失敗しても接続） ★★★
     connection_pool = pool.SimpleConnectionPool(
         5, 20,
         dsn=db_url,
-        sslmode='require'
+        sslmode='prefer'  # ← 'require' から 'prefer' に変更
     )
-    print(f"【DBプール】初期化完了 (最小5, 最大20)")
+    print(f"【DBプール】初期化完了 (最小5, 最大20, SSLモード: prefer)")
 
 def get_db():
     """接続プールから接続を取得（タイムゾーン設定なし）"""
