@@ -37,10 +37,20 @@
                     <div class="display-4 fw-bold text-primary tracking-wider bg-primary-subtle py-2 px-4 rounded border border-primary-subtle" id="target-box" style="letter-spacing: 2px;"></div>
                 </div>
 
+                <!-- 問題文 -->
                 <div class="fs-4 text-dark mb-3 p-3 bg-light rounded border shadow-sm flex-shrink-0" id="question-text" style="line-height: 1.6; font-weight: 500; max-height: 120px; overflow-y: auto;">
                     <span class="text-muted">問題を読み込み中...</span>
                 </div>
 
+                <!-- ★★★ 段階1: 仕事で役立つ力の表示 ★★★ -->
+                <div id="skill-indicator" class="mb-3 p-2 bg-success bg-opacity-10 border border-success rounded-3" style="display: none;">
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-success me-2">💼 仕事で役立つ力</span>
+                        <span id="skill-text" class="text-dark fw-bold"></span>
+                    </div>
+                </div>
+
+                <!-- 選択肢 -->
                 <div class="flex-grow-1 overflow-auto px-1">
                     <div class="row row-cols-1 row-cols-md-2 g-2" id="choices-container">
                         <div class="text-center py-5 w-100">
@@ -86,22 +96,44 @@
     </div>
 </div>
 
-<!-- ====== 全画面ブロッカー ====== -->
-<div id="fullscreen-overlay" style="display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 99999; flex-direction: column; justify-content: center; align-items: center; color: white; font-family: 'Noto Sans JP', sans-serif;">
-    <div style="text-align: center; max-width: 600px; padding: 40px;">
-        <div style="font-size: 80px; margin-bottom: 20px;">🔒</div>
-        <h1 style="color: #ff6b6b; font-weight: 700; margin-bottom: 20px;">全画面モードが必須です</h1>
-        <p style="font-size: 1.2rem; line-height: 1.8; color: #e0e0e0; margin-bottom: 30px;">
-            この試験は<b>全画面モード</b>での受験が必須です。<br>
-            全画面を解除すると<b>不正行為とみなされ</b>、<br>
-            試験は<b>強制終了（0点）</b>となります。
-        </p>
-        <button id="fullscreen-btn" class="btn btn-success btn-lg fw-bold px-5 py-3 shadow" style="font-size: 1.3rem; border-radius: 12px;">
-            <i class="bi bi-fullscreen me-2"></i> 全画面で試験を開始
+<!-- ====== ★★★ 段階3: 全画面ブロッカー（目的説明付き） ★★★ ====== -->
+<div id="fullscreen-blocker" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.92); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; padding: 20px; overflow-y: auto;">
+    <div style="max-width: 640px; width: 100%; text-align: center;">
+        <!-- アイコン -->
+        <div style="font-size: 60px; margin-bottom: 10px;">🚀</div>
+        <h2 class="fw-bold text-warning mb-3" style="font-size: 1.8rem;">このテストを受ける意味</h2>
+        
+        <!-- 説明エリア -->
+        <div style="background: rgba(255,255,255,0.05); border-radius: 16px; padding: 24px; margin-bottom: 24px; text-align: left; line-height: 1.8; color: #e2e8f0; border: 1px solid rgba(255,255,255,0.05);">
+            <p style="margin-bottom: 12px; font-size: 1.05rem;">
+                この教材は、<b style="color: #10b981;">日本企業で働くために必要な基礎力</b>を身につけるためのものです。
+            </p>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.95rem; margin: 16px 0; background: rgba(0,0,0,0.3); border-radius: 12px; padding: 12px;">
+                <div style="padding: 4px 0;">✅ 正しく読む力</div>
+                <div style="padding: 4px 0;">✅ 正しく考える力</div>
+                <div style="padding: 4px 0;">✅ 正しく計算する力</div>
+                <div style="padding: 4px 0;">✅ 正しく判断する力</div>
+                <div style="grid-column: span 2; text-align: center; padding: 4px 0;">✅ 正しく伝える力</div>
+            </div>
+            
+            <div style="background: rgba(16, 185, 129, 0.1); border-radius: 10px; padding: 12px; border-left: 4px solid #10b981; margin-top: 8px;">
+                <p style="font-size: 0.95rem; color: #cbd5e1; margin-bottom: 0;">
+                    💡 <b style="color: #fcd34d;">「点数」だけでなく「どの力が伸びたか」</b>に注目しましょう。<br>
+                    <span style="font-size: 0.85rem; color: #94a3b8;">問題を解き終わった後に結果が表示されます</span>
+                </p>
+            </div>
+        </div>
+        
+        <!-- ボタン -->
+        <button class="btn btn-success btn-lg fw-bold px-5 py-3 shadow" onclick="startExamFullscreen()" style="font-size: 1.2rem; border-radius: 12px; min-width: 200px;">
+            <i class="bi bi-play-fill"></i> 理解しました！開始する
         </button>
-        <p style="margin-top: 20px; font-size: 0.9rem; color: #888;">
-            ※ 全画面モードは <b>F11</b> または <b>Esc</b> では解除できません
-        </p>
+        <div style="margin-top: 14px;">
+            <button class="btn btn-outline-secondary" onclick="location.href='/student_dashboard'" style="font-size: 0.9rem; border-color: #475569; color: #94a3b8;">
+                <i class="bi bi-arrow-left"></i> 試験を中止して戻る
+            </button>
+        </div>
     </div>
 </div>
 
@@ -111,7 +143,7 @@
         <div style="font-size: 80px; margin-bottom: 20px;">🚫</div>
         <h1 style="font-weight: 700; margin-bottom: 20px;">不正行為が検知されました</h1>
         <p style="font-size: 1.2rem; line-height: 1.8; margin-bottom: 30px;">
-            試験中に画面切り替えが検知されたため、<br>
+            全画面モードが解除されたため、<br>
             この試験は<b>強制終了</b>されました。<br>
             得点は <b>0点（失格）</b> となります。
         </p>
@@ -181,23 +213,18 @@
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
     }
-    #focus-warning {
-        display: none;
-        position: fixed;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: rgba(255, 193, 7, 0.95);
-        color: #000;
-        padding: 12px 24px;
-        border-radius: 8px;
-        z-index: 99997;
-        font-weight: bold;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-        font-size: 1rem;
-    }
     #submit-loading {
         cursor: wait;
+    }
+    /* スキル表示のスタイル */
+    #skill-indicator {
+        transition: all 0.3s ease;
+    }
+    #skill-indicator .badge {
+        font-size: 0.8rem;
+    }
+    #skill-text {
+        font-size: 0.95rem;
     }
 </style>
 
@@ -253,6 +280,23 @@ function hideLoading() {
     }
 }
 
+// ====== ★★★ カテゴリとスキルのマッピング（段階1用） ★★★ ======
+const skillMap = {
+    '照合': '📋 メールアドレスや社員番号を間違えないために必要です',
+    '置換': '🔄 ルールを理解して正確に処理する力です',
+    '漢字の読み書き': '📝 メールや報告書を書くときに役立ちます',
+    '語句の意味': '📖 会社でよく使われる言葉を理解できます',
+    '２語の関係': '🔗 物事の関係性を正しく捉える力です',
+    '文章理解': '💬 社内メールやお客様からの連絡を正しく理解する力です',
+    '計算': '🧮 売上や利益を計算するときに使います',
+    '文章題': '📊 実際のビジネスシーンで数字を扱う力です',
+    '文章題I': '📊 実際のビジネスシーンで数字を扱う力です',
+    '文章題II': '📊 実際のビジネスシーンで数字を扱う力です',
+    '順列・組合せ・確率': '🎯 効率的な計画を立てる力です',
+    '表とグラフ': '📈 データを読み解き、判断する力です',
+    '推論': '🧠 仕事の順番や予定を考える力になります'
+};
+
 // ====== 基本設定 ======
 let currentQNo = 1;
 const totalQuestions = parseInt("{{ total_q }}");
@@ -295,7 +339,6 @@ function updateTimer() {
         timeUpFlag = true;
         clearInterval(timerInterval);
         localStorage.removeItem("exam_end_time_id_" + testId);
-        
         if (!isSubmitting) {
             isSubmitting = true;
             showLoading('⏰ 制限時間終了', '採点結果を表示しています...');
@@ -336,11 +379,9 @@ let timerInterval = setInterval(updateTimer, 1000);
 updateTimer();
 
 // ====== 全画面制御 ======
-const overlay = document.getElementById('fullscreen-overlay');
+const overlay = document.getElementById('fullscreen-blocker');
 const cheatOverlay = document.getElementById('cheat-overlay');
 const fullscreenBtn = document.getElementById('fullscreen-btn');
-
-// ★★★ 全画面ブロッカーを最初に表示（display: flex に変更済み） ★★★
 
 function showFullscreenBlocker() {
     if (overlay) {
@@ -356,7 +397,7 @@ function hideFullscreenBlocker() {
     }
 }
 
-function enterFullscreen() {
+function startExamFullscreen() {
     const elem = document.documentElement;
     if (elem.requestFullscreen) {
         elem.requestFullscreen()
@@ -372,8 +413,6 @@ function enterFullscreen() {
             });
     }
 }
-
-fullscreenBtn.addEventListener('click', enterFullscreen);
 
 // 全画面変更イベント
 document.addEventListener('fullscreenchange', function() {
@@ -434,6 +473,7 @@ window.addEventListener('focus', function() {
 document.addEventListener('keydown', function(e) {
     if (isSessionError) return;
     
+    // Winキー
     if (e.key === 'Meta' || e.key === 'MetaLeft' || e.key === 'MetaRight') {
         e.preventDefault();
         showToast('⚠️ Windowsキーは試験中は使用できません。', 3000);
@@ -448,6 +488,7 @@ document.addEventListener('keydown', function(e) {
         return false;
     }
     
+    // Ctrl+Tab
     if (e.ctrlKey && e.key === 'Tab') {
         e.preventDefault();
         showToast('⚠️ タブ切り替えは試験中は禁止されています。', 3000);
@@ -462,6 +503,7 @@ document.addEventListener('keydown', function(e) {
         return false;
     }
     
+    // Ctrl+Shift+Tab
     if (e.ctrlKey && e.shiftKey && e.key === 'Tab') {
         e.preventDefault();
         showToast('⚠️ タブ切り替えは試験中は禁止されています。', 3000);
@@ -476,6 +518,7 @@ document.addEventListener('keydown', function(e) {
         return false;
     }
     
+    // Alt+Tab
     if (e.altKey && e.key === 'Tab') {
         e.preventDefault();
         showToast('⚠️ アプリ切り替えは試験中は禁止されています。', 3000);
@@ -553,13 +596,11 @@ window.addEventListener('popstate', function() {
     }
 });
 
-// ====== ページ離脱時の警告（修正版） ======
 window.addEventListener('beforeunload', function(e) {
     if (timeUpFlag || isSubmitting) {
         delete e.returnValue;
         return;
     }
-    
     if (document.fullscreenElement && !cheatDetected && localStorage.getItem("exam_end_time_id_" + testId)) {
         e.preventDefault();
         e.returnValue = '試験中です。ページを離れると不正行為とみなされます。';
@@ -682,10 +723,26 @@ function loadQuestion(qNo) {
 }
 
 function displayQuestion(data) {
+    // 問題番号
     document.getElementById("q-no-badge").innerText = `問 ${data.q_no} / 全 ${totalQuestions} 問`;
+    
+    // カテゴリ
     document.getElementById("category-badge").innerText = `カテゴリ: ${data.category || '未分類'}`;
+    
+    // 問題文
     document.getElementById("question-text").innerHTML = data.question || '（問題文がありません）';
     
+    // ★★★ 段階1: スキル表示（仕事で役立つ力） ★★★
+    const skillText = document.getElementById('skill-text');
+    const skillIndicator = document.getElementById('skill-indicator');
+    if (data.category && skillMap[data.category]) {
+        skillText.textContent = skillMap[data.category];
+        skillIndicator.style.display = 'block';
+    } else {
+        skillIndicator.style.display = 'none';
+    }
+    
+    // ターゲット
     const targetArea = document.getElementById("target-area");
     const targetBox = document.getElementById("target-box");
     if (data.target && data.target.trim() !== "") {
@@ -695,6 +752,7 @@ function displayQuestion(data) {
         targetArea.style.display = "none";
     }
     
+    // 次へボタン
     const nextBtn = document.getElementById("next-btn");
     if (currentQNo >= totalQuestions) {
         nextBtn.innerHTML = `最終解答を記録して提出画面へ <i class="bi bi-box-arrow-up"></i>`;
@@ -705,6 +763,7 @@ function displayQuestion(data) {
     nextBtn.classList.remove('btn-saving');
     nextBtn.classList.add('btn-success');
     
+    // 選択肢
     const container = document.getElementById("choices-container");
     container.innerHTML = "";
     const choices = data.choices || {};
