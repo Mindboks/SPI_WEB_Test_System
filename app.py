@@ -57,7 +57,7 @@ app.config.update(
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "1.1.6"
+APP_VERSION = "1.1.7"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
@@ -396,15 +396,8 @@ def teacher_admin():
         t_duration = request.form.get('duration', 30)
         file = request.files.get('test_csv')
 
-        # バリデーション
-        if not t_name:
-            flash('試験名を入力してください。')
-            return redirect(url_for('teacher_admin'))
-        if not t_class:
-            flash('対象クラスを選択してください。')
-            return redirect(url_for('teacher_admin'))
-        if not file or file.filename == '':
-            flash('CSVファイルを選択してください。')
+        if not t_name or not t_class or not file or file.filename == '':
+            flash('試験名、対象クラス、CSVファイルは必須です。')
             return redirect(url_for('teacher_admin'))
 
         conn = None
@@ -412,16 +405,11 @@ def teacher_admin():
             conn = get_db()
             cur = conn.cursor()
             
-            # テストを登録
             cur.execute('INSERT INTO tests (name, target_class, duration) VALUES (%s, %s, %s) RETURNING id', 
                        (t_name, t_class, t_duration))
             new_test_id = cur.fetchone()[0]
-            print(f"【デバッグ】テスト登録成功: test_id={new_test_id}")
             
-            # CSV読み込み
             file_content = file.read()
-            print(f"【デバッグ】ファイルサイズ: {len(file_content)} bytes")
-            
             try:
                 decoded_content = file_content.decode('utf-8-sig')
             except UnicodeDecodeError:
@@ -432,9 +420,6 @@ def teacher_admin():
             
             stream = io.StringIO(decoded_content)
             reader = csv.DictReader(stream)
-            
-            # カラム名を表示（デバッグ用）
-            print(f"【デバッグ】CSVカラム名: {reader.fieldnames}")
             
             def find_column(reader, patterns):
                 if not reader.fieldnames:
@@ -453,20 +438,16 @@ def teacher_admin():
                             return col
                 return None
 
-            q_no_col = find_column(reader, ['test_number', '問題番号'])
-            category_col = find_column(reader, ['test genre', 'カテゴリ', 'ジャンル'])
-            question_col = find_column(reader, ['test questions', '問題文'])
-            target_col = find_column(reader, ['target', 'ターゲット'])
-            answer_col = find_column(reader, ['Answer', '正解', '答え'])
-            explanation_col = find_column(reader, ['Test explanation', '解説'])
+            q_no_col = find_column(reader, ['test_number'])
+            category_col = find_column(reader, ['test genre'])
+            question_col = find_column(reader, ['test questions'])
+            target_col = find_column(reader, ['target'])
+            answer_col = find_column(reader, ['Answer'])
+            explanation_col = find_column(reader, ['Test explanation'])
             choice_columns = []
             for i in range(1, 11):
-                found = find_column(reader, [f'Answer_{i}', f'選択肢{i}'])
+                found = find_column(reader, [f'Answer_{i}'])
                 choice_columns.append(found)
-            
-            print(f"【デバッグ】q_no_col: {q_no_col}")
-            print(f"【デバッグ】category_col: {category_col}")
-            print(f"【デバッグ】question_col: {question_col}")
             
             inserted_count = 0
             for row in reader:
@@ -475,8 +456,7 @@ def teacher_admin():
                     continue
                 try:
                     q_no_int = int(float(q_no_raw))
-                except (ValueError, TypeError) as e:
-                    print(f"【警告】問題番号変換エラー: {q_no_raw} - {e}")
+                except (ValueError, TypeError):
                     continue
                 
                 a1 = row.get(choice_columns[0], '').strip() if choice_columns[0] else ''
@@ -525,6 +505,9 @@ def teacher_admin():
             if conn:
                 try:
                     conn.rollback()
+                except:
+                    pass
+                try:
                     return_db(conn)
                 except:
                     pass
@@ -532,32 +515,20 @@ def teacher_admin():
             
         return redirect(url_for('teacher_admin'))
     
-    # ========== GET処理（管理画面表示） ==========
+    # ========== GET処理 ==========
     tests, results, classes = [], [], []
     conn = None
     try:
         conn = get_db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # クラス一覧を取得
-        cur.execute("""
-            SELECT DISTINCT class_id 
-            FROM users 
-            WHERE class_id IS NOT NULL 
-              AND class_id != '' 
-              AND class_id != 'teacher'
-            ORDER BY class_id ASC
-        """)
+        cur.execute("SELECT DISTINCT class_id FROM users WHERE class_id IS NOT NULL AND class_id != '' AND class_id != 'teacher' ORDER BY class_id ASC")
         classes_data = cur.fetchall()
         classes = [row['class_id'] for row in classes_data] if classes_data else []
         
-        print(f"【デバッグ】取得したクラス一覧: {classes}")
-        
-        # テスト一覧を取得
         cur.execute('SELECT * FROM tests ORDER BY id DESC')
         tests = cur.fetchall()
         
-        # 結果一覧を取得
         cur.execute('''SELECT r.id, t.name AS test_name, u.class_id, u.id AS student_id, u.name AS student_name, r.score, r.timestamp 
                     FROM results r 
                     JOIN tests t ON r.test_id = t.id 
