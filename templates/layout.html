@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
-    <title>{% block title %}{% endblock %} | 学校専用SPIテストシステム</title>
+    <title>{% block title %}{% endblock %} | MI RAI</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/bootstrap-icons.css') }}" rel="stylesheet">
@@ -33,6 +33,45 @@
             flex-shrink: 0;
         }
         
+        /* ★★★ タイトルデザイン（変更部分） ★★★ */
+        .navbar-brand {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            line-height: 1.3;
+            text-decoration: none;
+        }
+        .navbar-brand .brand-main {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #0d6efd;
+            letter-spacing: 1px;
+        }
+        .navbar-brand .brand-main .highlight {
+            color: #10b981;
+        }
+        .navbar-brand .brand-sub {
+            font-size: 0.7rem;
+            color: #6c757d;
+            font-weight: 400;
+            letter-spacing: 0.5px;
+        }
+        .navbar-brand .brand-sub .jp {
+            font-size: 0.6rem;
+            color: #adb5bd;
+        }
+        @media (max-width: 576px) {
+            .navbar-brand .brand-main {
+                font-size: 1.2rem;
+            }
+            .navbar-brand .brand-sub {
+                font-size: 0.55rem;
+            }
+            .navbar-brand .brand-sub .jp {
+                font-size: 0.5rem;
+            }
+        }
+        
         /* フッター - シンプルに最下部固定 */
         .footer {
             flex-shrink: 0;
@@ -55,9 +94,15 @@
     <!-- ヘッダー -->
     <nav class="navbar navbar-dark shadow-sm" style="background-color: #fff; border-bottom: 2px solid #0d6efd;">
         <div class="container">
-            <a class="navbar-brand fw-bold d-flex align-items-center" href="{{ url_for('index') }}" style="font-size: 1.5rem; color: #0d6efd;">
-                <i class="bi bi-book-half" style="margin-right: 15px; font-size: 1.5rem;"></i>
-                学校専用SPIテストシステム
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <div class="brand-main">
+                    <i class="bi bi-book-half" style="margin-right: 8px; font-size: 1.4rem; color: #0d6efd;"></i>
+                    MI <span class="highlight">RAI</span>
+                </div>
+                <div class="brand-sub">
+                    留学生のための就職基礎力育成システム
+                    <span class="jp">｜日本企業で働くための力を育てる</span>
+                </div>
             </a>
             
             {% if session.get('user_id') %}
@@ -79,11 +124,11 @@
     <footer class="footer">
         <div class="container text-center">
             <p class="mb-0">
-                <i class="bi bi-c-circle"></i> 2026 学校専用SPIテストシステム
+                <i class="bi bi-c-circle"></i> 2026 MI RAI
                 <span class="mx-2">|</span>
-                Built with <i class="bi bi-incognito" style="color: #cccccc;"></i> by <strong>Ikeda</strong>
+                留学生のための就職基礎力育成システム
                 <span class="mx-2">|</span>
-                ver.2.9.5&ensp;final-renovation.ver.{{ app_version }}
+                ver.{{ app_version }}
             </p>
         </div>
     </footer>
