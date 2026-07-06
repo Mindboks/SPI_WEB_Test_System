@@ -86,9 +86,10 @@
                 <table class="table table-sm table-borderless mb-0" style="font-family: 'Courier New', monospace; font-size: 0.7rem;">
                     <tbody>
                         <!-- ★ 更新履歴 ★ -->
-                        <tr><td class="text-nowrap" style="color: #000;">2026-07-06 01:03</td><td></td><td>SSLエラー対応版に修正"</td></tr>
-                        <tr><td class="text-nowrap" style="color: #000;">2026-07-06 00:48</td><td></td><td>ログイン不具合修正</td></tr>
-                        <tr><td class="text-nowrap" style="color: #000;">2026-06-25 21:48</td><td></td><td>DB接続プール導入</td></tr>
+                        <tr><td class="text-nowrap" style="color: #000;">2026-07-06 02:01</td><td>受験結果並べ替え追加・修正"</td></tr>
+                        <tr><td class="text-nowrap" style="color: #000;">2026-07-06 01:03</td><td>SSLエラー対応版に修正"</td></tr>
+                        <tr><td class="text-nowrap" style="color: #000;">2026-07-06 00:48</td><td>ログイン不具合修正</td></tr>
+                        <tr><td class="text-nowrap" style="color: #000;">2026-06-25 21:48</td><td>DB接続プール導入</td></tr>
                         <tr><td class="text-nowrap" style="color: #000;">2026-06-25 20:25</td><td>時間切れ/途中提出時に結果ページへ確実に遷移するよう修正</td></tr>
                         <tr><td class="text-nowrap" style="color: #000;">2026-06-25 20:05</td><td>全画面表示を改善</td></tr>
                         <tr><td class="text-nowrap" style="color: #000;">2026-06-25 19:32</td><td>学生の受験結果・リアルタイムログ並べ替え機能追加</td></tr>
@@ -214,13 +215,15 @@
         <div class="d-flex justify-content-between align-items-center px-3 py-2 bg-light">
             <span class="small text-muted">並び替え：</span>
             <div class="d-flex gap-2 flex-wrap">
-                <a href="{{ url_for('teacher_admin', sort='test') }}" class="btn btn-sm btn-outline-secondary">テスト名順</a>
-                <a href="{{ url_for('teacher_admin', sort='class') }}" class="btn btn-sm btn-outline-secondary">クラス順</a>
-                <a href="{{ url_for('teacher_admin', sort='id') }}" class="btn btn-sm btn-outline-secondary">学籍番号順</a>
-                <a href="{{ url_for('teacher_admin', sort='score') }}" class="btn btn-sm btn-outline-secondary">得点順</a>
-                <a href="{{ url_for('teacher_admin', sort='date') }}" class="btn btn-sm btn-outline-secondary">日時順</a>
+                <button class="btn btn-sm btn-outline-secondary sort-btn" onclick="sortTable('test_name')">テスト名順</button>
+                <button class="btn btn-sm btn-outline-secondary sort-btn" onclick="sortTable('class_id')">クラス順</button>
+                <button class="btn btn-sm btn-outline-secondary sort-btn" onclick="sortTable('student_name')">氏名順</button>
+                <button class="btn btn-sm btn-outline-secondary sort-btn" onclick="sortTable('score')">得点順</button>
+                <button class="btn btn-sm btn-outline-secondary sort-btn" onclick="sortTable('timestamp')">日時順</button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="resetTableOrder()">🔄 リセット</button>
             </div>
         </div>
+
         <!-- 学生の受験結果 -->
         <div class="card shadow-sm border-0 bg-white rounded-3">
             <div class="card-header bg-secondary text-white py-3">
@@ -228,7 +231,7 @@
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive" style="max-height: 595px; overflow-y: auto;">
-                    <table class="table table-hover align-middle mb-0">
+                    <table class="table table-hover align-middle mb-0" id="results-table">
                         <thead class="table-light">
                             <tr>
                                 <th class="ps-3">学生ID / 氏名</th>
@@ -259,9 +262,9 @@
                                     <td class="text-muted small" style="font-size: 0.8rem;">{{ r.timestamp }}</td>
                                     <td class="text-center">
                                         <a href="{{ url_for('teacher_view_result', result_id=r.id) }}" 
-                                           class="btn btn-sm btn-outline-primary" 
-                                           target="_blank"
-                                           title="結果を詳細表示">
+                                        class="btn btn-sm btn-outline-primary" 
+                                        target="_blank"
+                                        title="結果を詳細表示">
                                             <i class="bi bi-eye"></i>
                                         </a>
                                     </td>
@@ -284,6 +287,141 @@
 <script>
 function showDummyMessage(action) {
     alert('🔒 サーバー管理者のみ変更ができます。\n（現在は試験表示中です）');
+}
+
+// ========== 並べ替え機能 ==========
+let currentOrder = 'asc';
+let lastSortedColumn = null;
+let originalRows = [];
+
+// ページ読み込み時に元の順序を保存
+document.addEventListener('DOMContentLoaded', function() {
+    const tbody = document.querySelector('#results-table tbody');
+    if (tbody) {
+        const rows = tbody.querySelectorAll('tr');
+        // 「データなし」行を除外
+        originalRows = Array.from(rows).filter(row => 
+            row.querySelector('td') && 
+            !row.querySelector('td').textContent.includes('まだ受験データはありません')
+        );
+    }
+});
+
+function sortTable(column) {
+    const tbody = document.querySelector('#results-table tbody');
+    if (!tbody) return;
+    
+    const rows = tbody.querySelectorAll('tr');
+    // 「データなし」行を除外
+    const dataRows = Array.from(rows).filter(row => 
+        row.querySelector('td') && 
+        !row.querySelector('td').textContent.includes('まだ受験データはありません')
+    );
+    
+    if (dataRows.length === 0) return;
+    
+    // 同じカラムの場合は昇順/降順を切り替え
+    if (lastSortedColumn === column) {
+        currentOrder = currentOrder === 'asc' ? 'desc' : 'asc';
+    } else {
+        lastSortedColumn = column;
+        currentOrder = 'asc';
+    }
+    
+    // ソート実行
+    dataRows.sort((a, b) => {
+        let aVal, bVal;
+        
+        // カラムに応じて値を取得
+        const cells = a.querySelectorAll('td');
+        const bCells = b.querySelectorAll('td');
+        
+        switch(column) {
+            case 'student_name':
+                // 氏名は2行になっているので、最初の行のテキストを取得
+                aVal = cells[0]?.querySelector('.fw-bold')?.textContent?.trim() || '';
+                bVal = bCells[0]?.querySelector('.fw-bold')?.textContent?.trim() || '';
+                break;
+            case 'class_id':
+                aVal = cells[1]?.textContent?.trim() || '';
+                bVal = bCells[1]?.textContent?.trim() || '';
+                break;
+            case 'test_name':
+                aVal = cells[2]?.textContent?.trim() || '';
+                bVal = bCells[2]?.textContent?.trim() || '';
+                break;
+            case 'score':
+                // 得点は「XX点」から数値部分を抽出
+                const aScoreText = cells[3]?.textContent?.trim() || '0点';
+                const bScoreText = bCells[3]?.textContent?.trim() || '0点';
+                aVal = parseInt(aScoreText.replace(/[^0-9]/g, '')) || 0;
+                bVal = parseInt(bScoreText.replace(/[^0-9]/g, '')) || 0;
+                break;
+            case 'timestamp':
+                aVal = cells[4]?.textContent?.trim() || '';
+                bVal = bCells[4]?.textContent?.trim() || '';
+                break;
+            default:
+                aVal = '';
+                bVal = '';
+        }
+        
+        // 数値の場合は数値比較
+        if (column === 'score') {
+            return currentOrder === 'asc' ? aVal - bVal : bVal - aVal;
+        }
+        
+        // 文字列の場合は日本語対応で比較
+        const result = aVal.toString().localeCompare(bVal.toString(), 'ja');
+        return currentOrder === 'asc' ? result : -result;
+    });
+    
+    // ソート後、テーブルに再挿入
+    dataRows.forEach(row => tbody.appendChild(row));
+    
+    // ボタンの表示を更新
+    updateButtonStyles(column);
+}
+
+function resetTableOrder() {
+    const tbody = document.querySelector('#results-table tbody');
+    if (!tbody || originalRows.length === 0) return;
+    
+    // 元の順序に戻す
+    originalRows.forEach(row => tbody.appendChild(row));
+    lastSortedColumn = null;
+    currentOrder = 'asc';
+    
+    // ボタンのスタイルをリセット
+    document.querySelectorAll('.sort-btn').forEach(btn => {
+        btn.classList.remove('btn-primary', 'active');
+        btn.classList.add('btn-outline-secondary');
+    });
+}
+
+function updateButtonStyles(column) {
+    // 全てのボタンをリセット
+    document.querySelectorAll('.sort-btn').forEach(btn => {
+        btn.classList.remove('btn-primary', 'active');
+        btn.classList.add('btn-outline-secondary');
+    });
+    
+    // 現在のソートボタンにクラスを追加
+    const buttons = document.querySelectorAll('.sort-btn');
+    const columnMap = {
+        'test_name': 0,
+        'class_id': 1,
+        'student_name': 2,
+        'score': 3,
+        'timestamp': 4
+    };
+    const idx = columnMap[column];
+    if (idx !== undefined && buttons[idx]) {
+        buttons[idx].classList.remove('btn-outline-secondary');
+        buttons[idx].classList.add('btn-primary', 'active');
+        // 昇順/降順の表示を追加
+        buttons[idx].textContent = buttons[idx].textContent.replace(/[▲▼]/, '') + (currentOrder === 'asc' ? ' ▲' : ' ▼');
+    }
 }
 </script>
 {% endblock %}

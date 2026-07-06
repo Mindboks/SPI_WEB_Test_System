@@ -57,7 +57,7 @@ app.config.update(
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.3"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
