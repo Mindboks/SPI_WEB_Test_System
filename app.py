@@ -57,7 +57,7 @@ app.config.update(
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "1.1.5"
+APP_VERSION = "1.1.6"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
@@ -382,6 +382,8 @@ def password_reset():
             return jsonify({'success': False, 'not_found': True, 'message': 'IDが見つかりません。'})
     return render_template('password_reset.html')
 
+
+# ========== teacher admin ==========
 @app.route('/teacher/admin', methods=['GET', 'POST'])
 def teacher_admin():
     if session.get('role') != 'teacher': 
@@ -394,103 +396,140 @@ def teacher_admin():
         t_duration = request.form.get('duration', 30)
         file = request.files.get('test_csv')
 
-        if t_name and t_class and file:
-            conn = None
-            try:
-                conn = get_db()
-                cur = conn.cursor()
-                cur.execute('INSERT INTO tests (name, target_class, duration) VALUES (%s, %s, %s) RETURNING id', 
-                           (t_name, t_class, t_duration))
-                new_test_id = cur.fetchone()[0]
-                
-                file_content = file.read()
-                try:
-                    decoded_content = file_content.decode('utf-8-sig')
-                except UnicodeDecodeError:
-                    try:
-                        decoded_content = file_content.decode('cp932')
-                    except UnicodeDecodeError:
-                        decoded_content = file_content.decode('latin-1')
-                stream = io.StringIO(decoded_content)
-                reader = csv.DictReader(stream)
-                
-                def find_column(reader, patterns):
-                    for pattern in patterns:
-                        for col in reader.fieldnames:
-                            if col is None:
-                                continue
-                            if pattern.lower() == col.lower():
-                                return col
-                    for pattern in patterns:
-                        for col in reader.fieldnames:
-                            if col is None:
-                                continue
-                            if pattern.lower() in col.lower():
-                                return col
-                    return None
+        # バリデーション
+        if not t_name:
+            flash('試験名を入力してください。')
+            return redirect(url_for('teacher_admin'))
+        if not t_class:
+            flash('対象クラスを選択してください。')
+            return redirect(url_for('teacher_admin'))
+        if not file or file.filename == '':
+            flash('CSVファイルを選択してください。')
+            return redirect(url_for('teacher_admin'))
 
-                q_no_col = find_column(reader, ['test_number'])
-                category_col = find_column(reader, ['test genre'])
-                question_col = find_column(reader, ['test questions'])
-                target_col = find_column(reader, ['target'])
-                answer_col = find_column(reader, ['Answer'])
-                explanation_col = find_column(reader, ['Test explanation'])
-                choice_columns = []
-                for i in range(1, 11):
-                    found = find_column(reader, [f'Answer_{i}'])
-                    choice_columns.append(found)
+        conn = None
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            
+            # テストを登録
+            cur.execute('INSERT INTO tests (name, target_class, duration) VALUES (%s, %s, %s) RETURNING id', 
+                       (t_name, t_class, t_duration))
+            new_test_id = cur.fetchone()[0]
+            print(f"【デバッグ】テスト登録成功: test_id={new_test_id}")
+            
+            # CSV読み込み
+            file_content = file.read()
+            print(f"【デバッグ】ファイルサイズ: {len(file_content)} bytes")
+            
+            try:
+                decoded_content = file_content.decode('utf-8-sig')
+            except UnicodeDecodeError:
+                try:
+                    decoded_content = file_content.decode('cp932')
+                except UnicodeDecodeError:
+                    decoded_content = file_content.decode('latin-1')
+            
+            stream = io.StringIO(decoded_content)
+            reader = csv.DictReader(stream)
+            
+            # カラム名を表示（デバッグ用）
+            print(f"【デバッグ】CSVカラム名: {reader.fieldnames}")
+            
+            def find_column(reader, patterns):
+                if not reader.fieldnames:
+                    return None
+                for pattern in patterns:
+                    for col in reader.fieldnames:
+                        if col is None:
+                            continue
+                        if pattern.lower() == col.lower():
+                            return col
+                for pattern in patterns:
+                    for col in reader.fieldnames:
+                        if col is None:
+                            continue
+                        if pattern.lower() in col.lower():
+                            return col
+                return None
+
+            q_no_col = find_column(reader, ['test_number', '問題番号'])
+            category_col = find_column(reader, ['test genre', 'カテゴリ', 'ジャンル'])
+            question_col = find_column(reader, ['test questions', '問題文'])
+            target_col = find_column(reader, ['target', 'ターゲット'])
+            answer_col = find_column(reader, ['Answer', '正解', '答え'])
+            explanation_col = find_column(reader, ['Test explanation', '解説'])
+            choice_columns = []
+            for i in range(1, 11):
+                found = find_column(reader, [f'Answer_{i}', f'選択肢{i}'])
+                choice_columns.append(found)
+            
+            print(f"【デバッグ】q_no_col: {q_no_col}")
+            print(f"【デバッグ】category_col: {category_col}")
+            print(f"【デバッグ】question_col: {question_col}")
+            
+            inserted_count = 0
+            for row in reader:
+                q_no_raw = row.get(q_no_col, '').strip() if q_no_col else ''
+                if not q_no_raw or q_no_raw == 'end':
+                    continue
+                try:
+                    q_no_int = int(float(q_no_raw))
+                except (ValueError, TypeError) as e:
+                    print(f"【警告】問題番号変換エラー: {q_no_raw} - {e}")
+                    continue
                 
-                inserted_count = 0
-                for row in reader:
-                    q_no_raw = row.get(q_no_col, '').strip() if q_no_col else ''
-                    if not q_no_raw or q_no_raw == 'end':
-                        continue
-                    try:
-                        q_no_int = int(float(q_no_raw))
-                    except (ValueError, TypeError):
-                        continue
-                    a1 = row.get(choice_columns[0], '').strip() if choice_columns[0] else ''
-                    a2 = row.get(choice_columns[1], '').strip() if choice_columns[1] else ''
-                    a3 = row.get(choice_columns[2], '').strip() if choice_columns[2] else ''
-                    a4 = row.get(choice_columns[3], '').strip() if choice_columns[3] else ''
-                    a5 = row.get(choice_columns[4], '').strip() if choice_columns[4] else ''
-                    a6 = row.get(choice_columns[5], '').strip() if choice_columns[5] else ''
-                    a7 = row.get(choice_columns[6], '').strip() if choice_columns[6] else ''
-                    a8 = row.get(choice_columns[7], '').strip() if choice_columns[7] else ''
-                    a9 = row.get(choice_columns[8], '').strip() if choice_columns[8] else ''
-                    a10 = row.get(choice_columns[9], '').strip() if choice_columns[9] else ''
-                    answer_val = row.get(answer_col, '').strip() if answer_col else ''
-                    explanation = row.get(explanation_col, '').strip() if explanation_col else ''
-                    category = row.get(category_col, '').strip() if category_col else ''
-                    question = row.get(question_col, '').strip() if question_col else ''
-                    target = row.get(target_col, '').strip() if target_col else ''
-                    
-                    def null_to_empty(val):
-                        return val if val is not None else ''
-                    
-                    cur.execute('''
-                        INSERT INTO questions (
-                            test_id, q_no, category, question, target, 
-                            a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, 
-                            answer, explanation
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ''', (
-                        new_test_id, q_no_int,
-                        null_to_empty(category), null_to_empty(question), null_to_empty(target),
-                        null_to_empty(a1), null_to_empty(a2), null_to_empty(a3), null_to_empty(a4), null_to_empty(a5),
-                        null_to_empty(a6), null_to_empty(a7), null_to_empty(a8), null_to_empty(a9), null_to_empty(a10),
-                        null_to_empty(answer_val), null_to_empty(explanation)
-                    ))
-                    inserted_count += 1
-                conn.commit()
-                cur.close()
-                return_db(conn)
-                flash(f'「{t_name}」を正常に登録しました。（{inserted_count}問登録）')
-            except Exception as e:
-                if conn:
+                a1 = row.get(choice_columns[0], '').strip() if choice_columns[0] else ''
+                a2 = row.get(choice_columns[1], '').strip() if choice_columns[1] else ''
+                a3 = row.get(choice_columns[2], '').strip() if choice_columns[2] else ''
+                a4 = row.get(choice_columns[3], '').strip() if choice_columns[3] else ''
+                a5 = row.get(choice_columns[4], '').strip() if choice_columns[4] else ''
+                a6 = row.get(choice_columns[5], '').strip() if choice_columns[5] else ''
+                a7 = row.get(choice_columns[6], '').strip() if choice_columns[6] else ''
+                a8 = row.get(choice_columns[7], '').strip() if choice_columns[7] else ''
+                a9 = row.get(choice_columns[8], '').strip() if choice_columns[8] else ''
+                a10 = row.get(choice_columns[9], '').strip() if choice_columns[9] else ''
+                answer_val = row.get(answer_col, '').strip() if answer_col else ''
+                explanation = row.get(explanation_col, '').strip() if explanation_col else ''
+                category = row.get(category_col, '').strip() if category_col else ''
+                question = row.get(question_col, '').strip() if question_col else ''
+                target = row.get(target_col, '').strip() if target_col else ''
+                
+                def null_to_empty(val):
+                    return val if val is not None else ''
+                
+                cur.execute('''
+                    INSERT INTO questions (
+                        test_id, q_no, category, question, target, 
+                        a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, 
+                        answer, explanation
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ''', (
+                    new_test_id, q_no_int,
+                    null_to_empty(category), null_to_empty(question), null_to_empty(target),
+                    null_to_empty(a1), null_to_empty(a2), null_to_empty(a3), null_to_empty(a4), null_to_empty(a5),
+                    null_to_empty(a6), null_to_empty(a7), null_to_empty(a8), null_to_empty(a9), null_to_empty(a10),
+                    null_to_empty(answer_val), null_to_empty(explanation)
+                ))
+                inserted_count += 1
+            
+            conn.commit()
+            cur.close()
+            return_db(conn)
+            flash(f'「{t_name}」を正常に登録しました。（{inserted_count}問登録）')
+            
+        except Exception as e:
+            print(f"【エラー】CSV登録エラー: {e}")
+            import traceback
+            traceback.print_exc()
+            if conn:
+                try:
                     conn.rollback()
                     return_db(conn)
-                flash(f'CSV登録エラー: {str(e)}')
+                except:
+                    pass
+            flash(f'CSV登録エラー: {str(e)}')
+            
         return redirect(url_for('teacher_admin'))
     
     # ========== GET処理（管理画面表示） ==========
@@ -512,9 +551,7 @@ def teacher_admin():
         classes_data = cur.fetchall()
         classes = [row['class_id'] for row in classes_data] if classes_data else []
         
-        # デバッグ出力
         print(f"【デバッグ】取得したクラス一覧: {classes}")
-        print(f"【デバッグ】クラス数: {len(classes)}")
         
         # テスト一覧を取得
         cur.execute('SELECT * FROM tests ORDER BY id DESC')
@@ -547,7 +584,6 @@ def teacher_admin():
         classes=classes,
         app_version=APP_VERSION
     )
-
 
 
 @app.route('/teacher/delete_test/<int:test_id>', methods=['POST'])
