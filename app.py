@@ -1,4 +1,4 @@
-#2026-4-11~2026-6-20 version2.9.7
+#2026-4-11~2026-6-20 version2.9.10
 # -*- coding: utf-8 -*-
 import os
 import csv
@@ -48,16 +48,16 @@ app.secret_key = os.environ.get('SECRET_KEY', 'default_secret_key_for_production
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 app.config.update(
-    SESSION_COOKIE_SECURE=False,  # ★★★ 開発環境ではFalse（RenderではTrue） ★★★
+    SESSION_COOKIE_SECURE=True,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
     PERMANENT_SESSION_LIFETIME=7200,
-    SESSION_COOKIE_DOMAIN=None,  # ★★★ ドメイン指定を一旦削除 ★★★
+    SESSION_COOKIE_DOMAIN='.cbtsy.com',
     SESSION_COOKIE_PERMANENT=True,
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "1.1.7"
+APP_VERSION = "1.1.8"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
@@ -82,7 +82,7 @@ def to_jst_filter(value):
         value = value.replace(tzinfo=pytz.UTC)
     return value.astimezone(jst).strftime('%Y-%m-%d %H:%M:%S')
 
-# ====== データベース接続プール（修正版） ======
+# ====== データベース接続プール（タイムゾーン設定なし） ======
 connection_pool = None
 
 def init_connection_pool():
@@ -92,32 +92,25 @@ def init_connection_pool():
     if not db_url:
         raise ValueError("DATABASE_URLが設定されていません")
     
-    # SSL接続設定を追加
     connection_pool = pool.SimpleConnectionPool(
         5, 20,
         dsn=db_url,
-        sslmode='require'  # SSLを強制
+        sslmode='require'
     )
-    print(f"【DBプール】初期化完了 (最小5, 最大20, SSLモード: require)")
+    print(f"【DBプール】初期化完了 (最小5, 最大20)")
 
 def get_db():
-    """接続プールから接続を取得"""
+    """接続プールから接続を取得（タイムゾーン設定なし）"""
     global connection_pool
     if connection_pool is None:
         init_connection_pool()
     
-    conn = connection_pool.getconn()
-    
-    # タイムゾーン設定（エラーを無視）
     try:
-        cur = conn.cursor()
-        cur.execute("SET TIME ZONE 'Asia/Tokyo'")
-        cur.close()
+        conn = connection_pool.getconn()
+        return conn
     except Exception as e:
-        # タイムゾーン設定エラーは無視（SSLエラーが発生しても続行）
-        print(f"【警告】タイムゾーン設定エラー（無視します）: {e}")
-    
-    return conn
+        print(f"【エラー】get_db: {e}")
+        raise
 
 def return_db(conn):
     """接続をプールに返却"""
@@ -127,12 +120,6 @@ def return_db(conn):
             connection_pool.putconn(conn)
         except Exception as e:
             print(f"【警告】接続返却エラー: {e}")
-
-def return_db(conn):
-    """接続をプールに返却"""
-    global connection_pool
-    if connection_pool and conn:
-        connection_pool.putconn(conn)
 
 def hash_password(password):
     return hashlib.sha256((password or "").encode('utf-8')).hexdigest()
@@ -287,23 +274,20 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
         print(f"【Geminiエラー】: {e}")
         return generate_ai_comment(score, details_data)
 
-# ========== リクエスト前処理（シンプル版） ==========
+# ========== リクエスト前処理 ==========
 @app.before_request
 def before_request():
-    # HTTP→HTTPS強制リダイレクト（本番環境のみ）
+    # HTTP→HTTPS強制リダイレクト
     if request.headers.get('X-Forwarded-Proto') == 'http':
         return redirect(request.url.replace('http://', 'https://'), 301)
     
-    # 静的ファイルはスキップ
     if request.path.startswith('/static'):
         return
     
-    # 認証不要な公開パス
     public_paths = ['/', '/login', '/logout', '/register', '/password_reset']
     if request.path in public_paths:
         return
     
-    # セッション確認（公開パス以外はログイン必須）
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
@@ -382,14 +366,11 @@ def password_reset():
             return jsonify({'success': False, 'not_found': True, 'message': 'IDが見つかりません。'})
     return render_template('password_reset.html')
 
-
-# ========== teacher admin ==========
 @app.route('/teacher/admin', methods=['GET', 'POST'])
 def teacher_admin():
     if session.get('role') != 'teacher': 
         return redirect(url_for('index'))
     
-    # ========== POST処理（テスト登録） ==========
     if request.method == 'POST':
         t_name = request.form.get('test_name')
         t_class = request.form.get('target_class')
@@ -515,7 +496,7 @@ def teacher_admin():
             
         return redirect(url_for('teacher_admin'))
     
-    # ========== GET処理 ==========
+    # GET処理
     tests, results, classes = [], [], []
     conn = None
     try:
@@ -555,7 +536,6 @@ def teacher_admin():
         classes=classes,
         app_version=APP_VERSION
     )
-
 
 @app.route('/teacher/delete_test/<int:test_id>', methods=['POST'])
 def delete_test(test_id):
@@ -841,7 +821,10 @@ def submit_test(test_id):
         return redirect(url_for('show_result', test_id=test_id, result_id=result_id))
     except Exception as e:
         if conn:
-            conn.rollback()
+            try:
+                conn.rollback()
+            except:
+                pass
             return_db(conn)
         print(f"【エラー】submit_test: {e}")
         import traceback
@@ -1130,7 +1113,6 @@ scheduler.add_job(delete_old_test_data, 'cron', hour=0, minute=0)
 scheduler.start()
 
 # ========== サーバー起動 ==========
-# アプリ起動時に接続プールを初期化
 init_connection_pool()
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
