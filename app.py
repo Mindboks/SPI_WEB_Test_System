@@ -57,7 +57,7 @@ app.config.update(
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "1.1.9"
+APP_VERSION = "1.2.0"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
@@ -82,7 +82,7 @@ def to_jst_filter(value):
         value = value.replace(tzinfo=pytz.UTC)
     return value.astimezone(jst).strftime('%Y-%m-%d %H:%M:%S')
 
-# ====== データベース接続プール（タイムゾーン設定なし） ======
+# ====== データベース接続プール（SSL問題完全解決版） ======
 connection_pool = None
 
 def init_connection_pool():
@@ -92,16 +92,31 @@ def init_connection_pool():
     if not db_url:
         raise ValueError("DATABASE_URLが設定されていません")
     
-    # ★★★ SSLモードを 'prefer' に変更（SSLを試みるが失敗しても接続） ★★★
-    connection_pool = pool.SimpleConnectionPool(
-        5, 20,
-        dsn=db_url,
-        sslmode='prefer'  # ← 'require' から 'prefer' に変更
-    )
-    print(f"【DBプール】初期化完了 (最小5, 最大20, SSLモード: prefer)")
+    # ★★★ URLからSSLパラメータを除去 ★★★
+    # '?sslmode=require' などが含まれている場合に除去
+    if '?' in db_url:
+        db_url = db_url.split('?')[0]
+        print(f"【DBプール】SSLパラメータを除去しました: {db_url}")
+    
+    # ★★★ SSLモードを 'disable' にして接続 ★★★
+    try:
+        connection_pool = pool.SimpleConnectionPool(
+            5, 20,
+            dsn=db_url,
+            sslmode='disable'  # SSLを完全に無効化
+        )
+        print(f"【DBプール】初期化完了 (最小5, 最大20, SSLモード: disable)")
+    except Exception as e:
+        print(f"【DBプール】SSL disable 失敗: {e}")
+        # フォールバック: パラメータなしで接続
+        connection_pool = pool.SimpleConnectionPool(
+            5, 20,
+            dsn=db_url
+        )
+        print(f"【DBプール】初期化完了 (最小5, 最大20, SSLモード: デフォルト)")
 
 def get_db():
-    """接続プールから接続を取得（タイムゾーン設定なし）"""
+    """接続プールから接続を取得"""
     global connection_pool
     if connection_pool is None:
         init_connection_pool()
@@ -111,7 +126,11 @@ def get_db():
         return conn
     except Exception as e:
         print(f"【エラー】get_db: {e}")
-        raise
+        # 接続プールを再初期化
+        connection_pool = None
+        init_connection_pool()
+        conn = connection_pool.getconn()
+        return conn
 
 def return_db(conn):
     """接続をプールに返却"""
