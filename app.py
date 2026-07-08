@@ -52,12 +52,12 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
     PERMANENT_SESSION_LIFETIME=7200,
-    SESSION_COOKIE_DOMAIN='.cbtsy.com',
+    SESSION_COOKIE_DOMAIN='.mi-rai.biz',
     SESSION_COOKIE_PERMANENT=True,
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "1.2.5"
+APP_VERSION = "1.2.8"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
