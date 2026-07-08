@@ -735,7 +735,7 @@ function displayQuestion(data) {
     nextBtn.classList.remove('btn-saving');
     nextBtn.classList.add('btn-success');
     
-    // 選択肢
+    // ★★★ 選択肢（修正版：ラジオボタンを常に空に） ★★★
     const container = document.getElementById("choices-container");
     container.innerHTML = "";
     const choices = data.choices || {};
@@ -752,23 +752,35 @@ function displayQuestion(data) {
         return;
     }
     
+    // ★★★ 全てのラジオボタンを空（未選択）状態で作成 ★★★
     choiceKeys.forEach(key => {
         const num = key.replace('a', '');
         const choiceText = choices[key];
-        const isChecked = data.current_answer === num;
+        // ★★★ isChecked を常に false に（常に空の状態） ★★★
         const col = document.createElement("div");
         col.className = "col";
         col.innerHTML = `
-            <label class="btn btn-outline-secondary w-100 text-start p-2 rounded-3 shadow-sm choice-label d-flex align-items-center ${isChecked ? 'selected-choice' : ''}" id="label-choice-${num}">
-                <input type="radio" name="choice" value="${num}" class="form-check-input me-3 style-radio" ${isChecked ? 'checked' : ''} onclick="highlightChoice('${num}')">
+            <label class="btn btn-outline-secondary w-100 text-start p-2 rounded-3 shadow-sm choice-label" id="label-choice-${num}">
+                <input type="radio" name="choice" value="${num}" class="form-check-input me-3 style-radio">
                 <span class="fw-bold text-dark" style="font-size: 1.05rem; white-space: normal; word-wrap: break-word;">[${num}] ${choiceText}</span>
             </label>
         `;
         container.appendChild(col);
     });
+    
+    // ★★★ 既存の回答があれば、選択状態を復元（ここで復元） ★★★
+    const currentAnswer = data.current_answer;
+    if (currentAnswer) {
+        const radio = document.querySelector(`input[name="choice"][value="${currentAnswer}"]`);
+        if (radio) {
+            radio.checked = true;
+            const label = document.getElementById(`label-choice-${currentAnswer}`);
+            if (label) label.classList.add('selected-choice');
+        }
+    }
+    
     renderNavigation(data.status_list || []);
 }
-
 function highlightChoice(num) {
     document.querySelectorAll('.choice-label').forEach(el => el.classList.remove('selected-choice'));
     const activeLabel = document.getElementById(`label-choice-${num}`);
