@@ -469,14 +469,15 @@ window.addEventListener('focus', function() {
     }
 });
 
-// ====== キーボード制御 ======
+// ====== キーボード制御（Win+Tab対策 追加） ======
 document.addEventListener('keydown', function(e) {
     if (isSessionError) return;
     
-    // Winキー
+    // ★★★ Winキー（Meta）を検知してブロック ★★★
     if (e.key === 'Meta' || e.key === 'MetaLeft' || e.key === 'MetaRight') {
         e.preventDefault();
         showToast('⚠️ Windowsキーは試験中は使用できません。', 3000);
+        // Winキーを押したらフォーカス喪失とみなす
         focusLostCount++;
         if (focusLostCount >= MAX_FOCUS_LOST) {
             cheatDetected = true;
@@ -488,7 +489,7 @@ document.addEventListener('keydown', function(e) {
         return false;
     }
     
-    // Ctrl+Tab
+    // ★★★ Ctrl+Tab をブロック（タブ切り替え禁止） ★★★
     if (e.ctrlKey && e.key === 'Tab') {
         e.preventDefault();
         showToast('⚠️ タブ切り替えは試験中は禁止されています。', 3000);
@@ -503,7 +504,7 @@ document.addEventListener('keydown', function(e) {
         return false;
     }
     
-    // Ctrl+Shift+Tab
+    // ★★★ Ctrl+Shift+Tab もブロック ★★★
     if (e.ctrlKey && e.shiftKey && e.key === 'Tab') {
         e.preventDefault();
         showToast('⚠️ タブ切り替えは試験中は禁止されています。', 3000);
@@ -518,7 +519,7 @@ document.addEventListener('keydown', function(e) {
         return false;
     }
     
-    // Alt+Tab
+    // ★★★ Alt+Tab をブロック（Windows アプリ切り替え） ★★★
     if (e.altKey && e.key === 'Tab') {
         e.preventDefault();
         showToast('⚠️ アプリ切り替えは試験中は禁止されています。', 3000);
@@ -533,6 +534,7 @@ document.addEventListener('keydown', function(e) {
         return false;
     }
     
+    // 以下、既存のキーボード制御（変更なし）
     if (!document.fullscreenElement && !cheatDetected) {
         if (overlay) overlay.style.display = 'flex';
         e.preventDefault();
@@ -575,36 +577,6 @@ document.addEventListener('keydown', function(e) {
         e.preventDefault();
         showToast('⚠️ 試験中のウィンドウ閉じは禁止されています。', 3000);
         return false;
-    }
-});
-
-document.addEventListener('contextmenu', function(e) {
-    if (!cheatDetected) { e.preventDefault(); return false; }
-});
-document.addEventListener('copy', function(e) {
-    if (!cheatDetected) { e.preventDefault(); return false; }
-});
-document.addEventListener('selectstart', function(e) {
-    if (!cheatDetected) { e.preventDefault(); return false; }
-});
-
-history.pushState(null, null, location.href);
-window.addEventListener('popstate', function() {
-    if (!cheatDetected && !isSessionError) {
-        history.pushState(null, null, location.href);
-        showToast('⚠️ 試験中のページ遷移は禁止されています。', 3000);
-    }
-});
-
-window.addEventListener('beforeunload', function(e) {
-    if (timeUpFlag || isSubmitting) {
-        delete e.returnValue;
-        return;
-    }
-    if (document.fullscreenElement && !cheatDetected && localStorage.getItem("exam_end_time_id_" + testId)) {
-        e.preventDefault();
-        e.returnValue = '試験中です。ページを離れると不正行為とみなされます。';
-        return e.returnValue;
     }
 });
 
@@ -803,7 +775,7 @@ function highlightChoice(num) {
     if(activeLabel) activeLabel.classList.add('selected-choice');
 }
 
-// ====== 解答保存 ======
+// ====== 解答保存（修正版：タイムアウト対応 + 二重送信防止） ======
 function submitAnswer(isSkip) {
     if (isLoading) return;
     if (cheatDetected || isSessionError) return;
@@ -819,6 +791,13 @@ function submitAnswer(isSkip) {
     }
     
     const nextBtn = document.getElementById("next-btn");
+    
+    // ★★★ 二重送信防止（既に保存中なら何もしない） ★★★
+    if (nextBtn.disabled) {
+        showToast('⏳ 保存中です。しばらくお待ちください...', 2000);
+        return;
+    }
+    
     nextBtn.disabled = true;
     nextBtn.classList.remove('btn-success');
     nextBtn.classList.add('btn-saving');
@@ -826,9 +805,34 @@ function submitAnswer(isSkip) {
     
     showDebug(`回答保存: Q${currentQNo}, choice=${selectedChoice || 'skip'}`);
     
-    safeApiCall(`/api/student/test/${testId}/get_question/${currentQNo}`, {
+    // ★★★ タイムアウトを設定（15秒でタイムアウト） ★★★
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+        controller.abort();
+        showDebug('【タイムアウト】回答保存がタイムアウトしました');
+        // タイムアウト時はボタンを戻す
+        nextBtn.disabled = false;
+        nextBtn.classList.remove('btn-saving');
+        nextBtn.classList.add('btn-success');
+        nextBtn.innerHTML = currentQNo >= totalQuestions ? 
+            `最終解答を記録して提出画面へ <i class="bi bi-box-arrow-up"></i>` : 
+            `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
+        showToast('⚠️ 通信が遅れています。もう一度お試しください。', 4000);
+    }, 15000);
+    
+    fetch(`/api/student/test/${testId}/get_question/${currentQNo}`, {
         method: "POST",
-        body: JSON.stringify({ choice: selectedChoice, skip: isSkip })
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ choice: selectedChoice, skip: isSkip }),
+        signal: controller.signal,
+        credentials: 'include'
+    })
+    .then(res => {
+        clearTimeout(timeoutId);
+        if (!res.ok) {
+            throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        return res.json();
     })
     .then(data => {
         showDebug('回答保存成功');
@@ -839,18 +843,32 @@ function submitAnswer(isSkip) {
                 window.location.replace(`/student/test/${testId}/submit`);
             }, 1000);
         } else {
+            // ★★★ 次の問題へ遷移する前にボタンを一旦戻す（次の問題読み込み時に再度変更される） ★★★
+            nextBtn.disabled = false;
+            nextBtn.classList.remove('btn-saving');
+            nextBtn.classList.add('btn-success');
+            nextBtn.innerHTML = `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
             loadQuestion(currentQNo + 1);
         }
     })
     .catch(error => {
+        clearTimeout(timeoutId);
         showDebug(`回答保存エラー: ${error.message}`);
-        showToast('⚠️ 解答の保存に失敗しました。もう一度お試しください。', 4000);
+        
+        // ★★★ エラー時は確実にボタンを戻す ★★★
         nextBtn.disabled = false;
         nextBtn.classList.remove('btn-saving');
         nextBtn.classList.add('btn-success');
         nextBtn.innerHTML = currentQNo >= totalQuestions ? 
             `最終解答を記録して提出画面へ <i class="bi bi-box-arrow-up"></i>` : 
             `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
+        
+        // エラーメッセージを表示
+        if (error.name === 'AbortError') {
+            showToast('⏰ 通信がタイムアウトしました。ネットワーク状態を確認してください。', 5000);
+        } else {
+            showToast('⚠️ 解答の保存に失敗しました。もう一度お試しください。', 4000);
+        }
     });
 }
 
