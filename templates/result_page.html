@@ -11,7 +11,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        /* 既存のスタイルは省略（変更なし） */
         * { box-sizing: border-box; }
         body {
             background-color: #0b0f19;
@@ -28,7 +27,7 @@
             width: 100vw;
             height: 100vh;
             max-width: 1440px;
-            max-height: 820px;
+            max-height: 900px;
             padding: 3vh 3vw;
             display: flex;
             flex-direction: column;
@@ -90,13 +89,13 @@
         }
         .chart-wrapper {
             width: 100%;
-            height: 90%;
+            height: 92%;
             position: relative;
         }
         .right-panel {
             display: flex;
             flex-direction: column;
-            gap: 2.5vh;
+            gap: 2vh;
             min-height: 0;
         }
         .info-card {
@@ -122,6 +121,7 @@
         .table-area {
             overflow-y: auto;
             flex-grow: 1;
+            max-height: 100%;
         }
         .table-custom {
             width: 100%;
@@ -145,7 +145,7 @@
             font-weight: 700;
         }
         
-        /* ★★★ AIコメントボックス - スクロール対応（修正） ★★★ */
+        /* ★★★ AIコメントボックス - スクロール対応 ★★★ */
         .ai-comment-box {
             font-size: 1rem;
             line-height: 1.6;
@@ -157,10 +157,8 @@
             word-wrap: break-word;
             padding-right: 10px;
             max-height: 100%;
-            min-height: 80px;
+            min-height: 120px;
         }
-        
-        /* カスタムスクロールバー */
         .ai-comment-box::-webkit-scrollbar {
             width: 8px;
         }
@@ -176,6 +174,41 @@
             background: #059669;
         }
         
+        /* ★★★ スキルバッジ - フォントサイズ統一 ★★★ */
+        .skill-badge {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            padding: 12px 6px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.2s ease;
+        }
+        .skill-badge:hover {
+            background: rgba(16, 185, 129, 0.1);
+            border-color: #10b981;
+        }
+        .skill-badge .skill-icon {
+            font-size: 2rem;
+        }
+        .skill-badge .skill-name {
+            font-weight: 700;
+            color: #f8fafc;
+            font-size: 1rem;
+        }
+        .skill-badge .skill-desc {
+            color: #94a3b8;
+            font-size: 0.8rem;
+        }
+        .skills-footer {
+            font-size: 0.8rem;
+            color: #10b981;
+            text-align: center;
+            margin-top: 8px;
+        }
+        
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
         .footer-bar {
             margin-top: 1.5vh;
             display: flex;
@@ -203,35 +236,18 @@
             border-color: #475569;
         }
         
-        .skill-badge {
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 12px;
-            padding: 8px 4px;
-            text-align: center;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            transition: all 0.2s ease;
-        }
-        .skill-badge:hover {
-            background: rgba(16, 185, 129, 0.1);
-            border-color: #10b981;
-        }
-        .skill-badge .skill-icon { font-size: 1.8rem; }
-        .skill-badge .skill-name { font-weight: 700; color: #f8fafc; font-size: 0.85rem; }
-        .skill-badge .skill-desc { color: #94a3b8; font-size: 0.65rem; }
-        .skills-footer { font-size: 0.75rem; color: #10b981; text-align: center; margin-top: 4px; }
-        
         @media (max-width: 768px) {
             body { overflow-y: auto; min-height: auto; padding: 15px; }
-            .slide-container { height: auto; }
+            .slide-container { height: auto; max-height: none; }
             .main-content { grid-template-columns: 1fr; gap: 15px; }
-            .left-panel { height: 300px; }
-            .info-card { flex: none; height: auto; min-height: 200px; }
+            .left-panel { height: 350px; }
+            .info-card { flex: none; height: auto; min-height: 250px; }
             .header-area { flex-direction: column; align-items: flex-start; gap: 10px; }
             .total-score-badge { text-align: left; width: 100%; }
-            .skill-badge .skill-icon { font-size: 1.4rem; }
-            .skill-badge .skill-name { font-size: 0.75rem; }
-            .skill-badge .skill-desc { font-size: 0.6rem; }
-            .ai-comment-box { min-height: 60px; }
+            .skill-badge .skill-icon { font-size: 1.6rem; }
+            .skill-badge .skill-name { font-size: 0.9rem; }
+            .skill-badge .skill-desc { font-size: 0.7rem; }
+            .ai-comment-box { min-height: 100px; }
         }
         .skeleton-loader {
             background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
@@ -247,96 +263,100 @@
     </style>
 </head>
 <body>
-    <!-- コンテンツは既存のまま（変更なし） -->
-    <div class="slide-container">
-        <header class="header-area">
-            <div class="title-group">
-                <p>Individual Performance Analysis</p>
-                <h1>{{ res.student_name }} 様 <span class="fw-normal text-secondary" style="font-size: 1.5rem;">| 診断結果レポート</span></h1>
-            </div>
-            <div class="total-score-badge">
-                <div class="score-val">{{ res.score }} <span style="font-size: 1rem; color: #94a3b8;">点</span></div>
-            </div>
-        </header>
 
-        <div class="main-content">
-            <div class="left-panel shadow-sm">
-                <div class="card-title-label"><i class="fa-solid fa-chart-radar text-success"></i> 能力値バランスマップ</div>
-                <div class="chart-wrapper">
-                    <canvas id="radarChart"></canvas>
+<div class="slide-container">
+    <header class="header-area">
+        <div class="title-group">
+            <p>Individual Performance Analysis</p>
+            <h1>{{ res.student_name }} 様 <span class="fw-normal text-secondary" style="font-size: 1.5rem;">| 診断結果レポート</span></h1>
+        </div>
+        <div class="total-score-badge">
+            <div class="score-val">{{ res.score }} <span style="font-size: 1rem; color: #94a3b8;">点</span></div>
+        </div>
+    </header>
+
+    <div class="main-content">
+        <!-- 左パネル：レーダーチャート（高さ調整済み） -->
+        <div class="left-panel shadow-sm">
+            <div class="card-title-label"><i class="fa-solid fa-chart-radar text-success"></i> 能力値バランスマップ</div>
+            <div class="chart-wrapper">
+                <canvas id="radarChart"></canvas>
+            </div>
+        </div>
+
+        <!-- 右パネル -->
+        <div class="right-panel">
+            <!-- カテゴリー別到達度（スクロール対応） -->
+            <div class="info-card shadow-sm">
+                <div class="card-title-label"><i class="fa-solid fa-table-list"></i> カテゴリー別到達度</div>
+                <div class="table-area">
+                    <table class="table-custom">
+                        <thead>
+                            <tr>
+                                <th>分析カテゴリー</th>
+                                <th style="text-align: right;">正解率</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for i in range(details.labels|length) %}
+                            <tr>
+                                <td class="fw-bold">{{ details.labels[i] }}</td>
+                                <td class="cat-score">{{ details.scores[i] }}%</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
-            <div class="right-panel">
-                <div class="info-card shadow-sm">
-                    <div class="card-title-label"><i class="fa-solid fa-table-list"></i> カテゴリー別到達度</div>
-                    <div class="table-area">
-                        <table class="table-custom">
-                            <thead>
-                                <tr>
-                                    <th>分析カテゴリー</th>
-                                    <th style="text-align: right;">正解率</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for i in range(details.labels|length) %}
-                                <tr>
-                                    <td class="fw-bold">{{ details.labels[i] }}</td>
-                                    <td class="cat-score">{{ details.scores[i] }}%</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
+            <!-- 今回身についた力（スキル表示） -->
+            <div class="info-card shadow-sm" style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.25); flex: 0.5;">
+                <div class="card-title-label">
+                    <i class="fa-solid fa-star text-warning"></i> 今回身についた力
                 </div>
-
-                <div class="info-card shadow-sm" style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.25); flex: 0.6;">
-                    <div class="card-title-label">
-                        <i class="fa-solid fa-star text-warning"></i> 今回身についた力
-                    </div>
-                    <div id="skills-summary-container" class="row g-1">
-                        <!-- JavaScriptで動的に生成 -->
-                    </div>
-                    <div class="skills-footer" id="skills-footer">
-                        💼 これらは日本企業で毎日使う力です
-                    </div>
+                <div id="skills-summary-container" class="row g-2">
+                    <!-- JavaScriptで動的に生成 -->
                 </div>
+                <div class="skills-footer" id="skills-footer">
+                    💼 これらは日本企業で毎日使う力です
+                </div>
+            </div>
 
-                <!-- ★★★ AIコメントエリア（スクロール対応） ★★★ -->
-                <div class="info-card shadow-sm">
-                    <div class="card-title-label"><i class="fa-solid fa-robot text-success"></i> AIパーソナライズ・アドバイス</div>
-                    <div id="ai-comment-area" style="flex: 1; min-height: 0; display: flex; flex-direction: column;">
-                        <div id="comment-loading" class="text-center py-4">
-                            <div class="spinner-border text-success mb-2" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <p class="text-muted mb-0">AIがコメントを生成中です...</p>
-                            <p class="small text-muted">しばらくお待ちください</p>
+            <!-- AIパーソナライズ・アドバイス（スクロール対応） -->
+            <div class="info-card shadow-sm">
+                <div class="card-title-label"><i class="fa-solid fa-robot text-success"></i> AIパーソナライズ・アドバイス</div>
+                <div id="ai-comment-area" style="flex: 1; min-height: 0; display: flex; flex-direction: column;">
+                    <div id="comment-loading" class="text-center py-4">
+                        <div class="spinner-border text-success mb-2" role="status">
+                            <span class="visually-hidden">Loading...</span>
                         </div>
-                        <div id="comment-body" class="ai-comment-box" style="display: none; overflow-y: auto; max-height: 100%;"></div>
+                        <p class="text-muted mb-0">AIがコメントを生成中です...</p>
+                        <p class="small text-muted">しばらくお待ちください</p>
                     </div>
+                    <div id="comment-body" class="ai-comment-box" style="display: none;"></div>
                 </div>
             </div>
         </div>
-        
-        <div id="chart-data" 
-             data-labels="{{ details.labels | tojson | safe }}" 
-             data-scores="{{ details.scores | tojson | safe }}" 
-             style="display:none;"></div>
-        
-        <footer class="footer-bar">
-            <div>
-                <a href="{{ url_for('student_dashboard') }}" class="back-btn"><i class="fa-solid fa-arrow-left"></i> ダッシュボードに戻る</a>
-            </div>
-            <div class="text-end pt-2">
-                受験ID: #{{ res.id }} &nbsp;|&nbsp; 実施日時: {{ res.timestamp }} &nbsp;|&nbsp; MI RAI
-            </div>
-        </footer>
     </div>
+    
+    <div id="chart-data" 
+         data-labels="{{ details.labels | tojson | safe }}" 
+         data-scores="{{ details.scores | tojson | safe }}" 
+         style="display:none;"></div>
+    
+    <footer class="footer-bar">
+        <div>
+            <a href="{{ url_for('student_dashboard') }}" class="back-btn"><i class="fa-solid fa-arrow-left"></i> ダッシュボードに戻る</a>
+        </div>
+        <div class="text-end pt-2">
+            受験ID: #{{ res.id }} &nbsp;|&nbsp; 実施日時: {{ res.timestamp }} &nbsp;|&nbsp; MI RAI
+        </div>
+    </footer>
+</div>
 
-    <script>
+<script>
     (function() {
-        // ====== レーダーチャート描画（修正版：確実に表示） ======
+        // ====== レーダーチャート描画（完全表示対応） ======
         const canvas = document.getElementById('radarChart');
         if (!canvas) {
             console.error('radarChart要素が見つかりません');
@@ -373,7 +393,7 @@
             scores = [0];
         }
         
-        // ★★★ データがある場合のみチャートを描画 ★★★
+        // データがある場合のみチャートを描画
         if (labels.length > 0 && labels[0] !== 'データがありません') {
             new Chart(ctx, {
                 type: 'radar',
@@ -387,8 +407,8 @@
                         borderWidth: 3,
                         pointBackgroundColor: '#ffffff',
                         pointBorderColor: '#10b981',
-                        pointRadius: 5,
-                        pointHoverRadius: 7,
+                        pointRadius: 6,
+                        pointHoverRadius: 8,
                         fill: true
                     }]
                 },
@@ -414,15 +434,15 @@
                                 backdropColor: 'transparent'
                             },
                             grid: {
-                                color: 'rgba(255,255,255,0.15)'
+                                color: 'rgba(255,255,255,0.12)'
                             },
                             angleLines: {
-                                color: 'rgba(255,255,255,0.15)'
+                                color: 'rgba(255,255,255,0.12)'
                             },
                             pointLabels: {
                                 color: '#f8fafc',
                                 font: {
-                                    size: 12,
+                                    size: 14,
                                     weight: 'bold',
                                     family: 'Noto Sans JP'
                                 }
@@ -436,7 +456,7 @@
             console.log('【デバッグ】データがないためチャートを描画しません');
         }
         
-        // ====== スキルサマリー表示（変更なし） ======
+        // ====== スキルサマリー表示（フォントサイズ調整済み） ======
         const skillDetailMap = {
             '照合': { icon: '👁️', name: '注意力', desc: '細かい違いを見分ける力' },
             '置換': { icon: '🔄', name: 'ルール適用力', desc: '決まりごとに従って処理する力' },
@@ -458,7 +478,7 @@
             if (!container) return;
             
             if (!labels || labels.length === 0) {
-                container.innerHTML = '<div class="col-12 text-center text-muted small">データがありません</div>';
+                container.innerHTML = '<div class="col-12 text-center text-muted">データがありません</div>';
                 document.getElementById('skills-footer').style.display = 'none';
                 return;
             }
@@ -483,7 +503,7 @@
             });
             
             if (skills.length === 0) {
-                container.innerHTML = '<div class="col-12 text-center text-muted small">データがありません</div>';
+                container.innerHTML = '<div class="col-12 text-center text-muted">データがありません</div>';
                 document.getElementById('skills-footer').style.display = 'none';
                 return;
             }
@@ -504,7 +524,7 @@
             document.getElementById('skills-footer').style.display = 'block';
         }
 
-        // ====== AIコメント取得（変更なし） ======
+        // ====== AIコメント取得 ======
         const resultId = "{{ result_id }}";
         const commentLoading = document.getElementById('comment-loading');
         const commentBody = document.getElementById('comment-body');
@@ -543,6 +563,6 @@
             }
         }
     })();
-    </script>
+</script>
 </body>
 </html>
