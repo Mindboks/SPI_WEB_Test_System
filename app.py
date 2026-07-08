@@ -57,7 +57,7 @@ app.config.update(
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "1.2.8"
+APP_VERSION = "1.3.0"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
@@ -82,7 +82,7 @@ def to_jst_filter(value):
         value = value.replace(tzinfo=pytz.UTC)
     return value.astimezone(jst).strftime('%Y-%m-%d %H:%M:%S')
 
-# ====== データベース接続プール（完全修正版） ======
+# ====== データベース接続プール（SSL完全無効化版） ======
 connection_pool = None
 
 def init_connection_pool():
@@ -92,34 +92,75 @@ def init_connection_pool():
     if not db_url:
         raise ValueError("DATABASE_URLが設定されていません")
     
-    # 接続プールを作成（SSLを無効化）
-    connection_pool = pool.SimpleConnectionPool(
-        1, 10,  # 最小1、最大10に減らす
-        dsn=db_url
-    )
-    print(f"【DBプール】初期化完了 (最小1, 最大10)")
+    # ★★★ URLからSSLパラメータを除去 ★★★
+    if '?' in db_url:
+        db_url = db_url.split('?')[0]
+        print(f"【DBプール】SSLパラメータを除去しました")
+    
+    # ★★★ SSLを完全に無効化して接続 ★★★
+    try:
+        connection_pool = pool.SimpleConnectionPool(
+            1, 10,
+            dsn=db_url,
+            sslmode='disable'
+        )
+        print(f"【DBプール】初期化完了 (最小1, 最大10, SSLモード: disable)")
+    except Exception as e:
+        print(f"【DBプール】SSL disable 失敗: {e}")
+        # フォールバック: SSLパラメータなし
+        connection_pool = pool.SimpleConnectionPool(
+            1, 10,
+            dsn=db_url
+        )
+        print(f"【DBプール】初期化完了 (最小1, 最大10, SSLモード: デフォルト)")
 
 def get_db():
-    """接続プールから接続を取得"""
+    """接続プールから接続を取得（リトライ付き）"""
     global connection_pool
     if connection_pool is None:
         init_connection_pool()
     
-    try:
-        conn = connection_pool.getconn()
-        return conn
-    except Exception as e:
-        print(f"【エラー】get_db: {e}")
-        raise
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            conn = connection_pool.getconn()
+            # ★★★ 接続が有効かチェック ★★★
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            cur.close()
+            return conn
+        except Exception as e:
+            print(f"【エラー】get_db 試行 {attempt + 1}/{max_retries}: {e}")
+            if attempt < max_retries - 1:
+                import time
+                time.sleep(1)
+                # 接続プールを再初期化して再接続
+                try:
+                    connection_pool = None
+                    init_connection_pool()
+                except:
+                    pass
+                continue
+            else:
+                raise
+    raise Exception("データベース接続に失敗しました")
 
 def return_db(conn):
-    """接続をプールに返却"""
+    """接続をプールに返却（エラー対策）"""
     global connection_pool
     if connection_pool and conn:
         try:
+            # ★★★ 接続が有効かチェックしてから返却 ★★★
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            cur.close()
             connection_pool.putconn(conn)
         except Exception as e:
-            print(f"【警告】接続返却エラー: {e}")
+            print(f"【警告】接続返却エラー（破棄します）: {e}")
+            try:
+                conn.close()
+            except:
+                pass
 
 
 
