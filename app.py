@@ -57,7 +57,7 @@ app.config.update(
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "1.4.3"
+APP_VERSION = "1.4.4"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
@@ -542,7 +542,8 @@ def teacher_admin():
         cur.execute('SELECT * FROM tests ORDER BY id DESC')
         tests = cur.fetchall()
         
-        cur.execute('''SELECT r.id, t.name AS test_name, u.class_id, u.id AS student_id, u.name AS student_name, r.score, r.timestamp 
+        # GET処理の結果一覧取得部分を修正
+        cur.execute('''SELECT r.id, t.name AS test_name, u.class_id, u.id AS student_id, u.name AS student_name, r.score, r.timestamp, r.elapsed_time_str 
                     FROM results r 
                     JOIN tests t ON r.test_id = t.id 
                     JOIN users u ON r.user_id = u.id 
@@ -779,10 +780,44 @@ def submit_test(test_id):
     session_key = f"answers_{user_id}_{test_id}"
     user_answers = session.get(session_key, {})
     
+    # ★★★ 開始時間を取得して経過時間を計算 ★★★
+    start_time_str = session.get('test_start_time')
+    elapsed_seconds = 0
+    elapsed_time_str = ""
+    
+    if start_time_str:
+        try:
+            from datetime import datetime
+            start_time = datetime.fromisoformat(start_time_str)
+            end_time = datetime.now()
+            elapsed_seconds = int((end_time - start_time).total_seconds())
+            
+            # 経過時間を文字列に変換
+            hours = elapsed_seconds // 3600
+            minutes = (elapsed_seconds % 3600) // 60
+            seconds = elapsed_seconds % 60
+            
+            if hours > 0:
+                elapsed_time_str = f"{hours}時間{minutes}分{seconds}秒"
+            else:
+                elapsed_time_str = f"{minutes}分{seconds}秒"
+        except Exception as e:
+            print(f"【経過時間計算エラー】: {e}")
+            elapsed_seconds = 0
+            elapsed_time_str = ""
+    
     conn = None
     try:
         conn = get_db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # ★★★ resultsテーブルに elapsed_time カラムを追加（初回のみ） ★★★
+        try:
+            cur.execute("ALTER TABLE results ADD COLUMN IF NOT EXISTS elapsed_time INTEGER DEFAULT 0")
+            cur.execute("ALTER TABLE results ADD COLUMN IF NOT EXISTS elapsed_time_str TEXT DEFAULT ''")
+            conn.commit()
+        except Exception as e:
+            print(f"【カラム追加エラー（無視）】: {e}")
         
         cur.execute('SELECT name FROM tests WHERE id = %s', (test_id,))
         test_result = cur.fetchone()
@@ -834,10 +869,11 @@ def submit_test(test_id):
         jst = pytz.timezone('Asia/Tokyo')
         now_jst = datetime.now(jst)
         
+        # ★★★ 経過時間も一緒に保存 ★★★
         cur.execute('''
-            INSERT INTO results (user_id, test_id, score, details, comment, timestamp) 
-            VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
-        ''', (user_id, test_id, final_score, json.dumps(analysis), ai_comment, now_jst))
+            INSERT INTO results (user_id, test_id, score, details, comment, timestamp, elapsed_time, elapsed_time_str) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+        ''', (user_id, test_id, final_score, json.dumps(analysis), ai_comment, now_jst, elapsed_seconds, elapsed_time_str))
         
         result_id = cur.fetchone()['id']
         conn.commit()
@@ -863,7 +899,7 @@ def submit_test(test_id):
         traceback.print_exc()
         flash("採点処理中にエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
-
+    
 # ========== 非同期AIコメントAPI ==========
 @app.route('/api/result/<int:result_id>/ai_comment', methods=['GET'])
 def api_get_ai_comment(result_id):
