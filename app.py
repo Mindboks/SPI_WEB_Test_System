@@ -267,9 +267,8 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
     weak_cats = [labels[i] for i in range(len(labels)) if i < len(scores) and scores[i] <= 50]
     category_results = "\n".join([f"- {labels[i]}: {scores[i]}%" for i in range(len(labels)) if i < len(scores)])
     
-    prompt = f"""あなたは教育カウンセラーです。以下の学生の試験結果を分析し、励ましと具体的なアドバイスを含むコメントを日本語で作成してください。
+    prompt = f"""あなたは教育カウンセラーです。以下の学生の試験結果を分析し、**仕事で役立つ力**という観点から励ましと具体的なアドバイスを日本語で作成してください。
 
-【学生情報】
 名前: {student_name}
 試験名: {test_name}
 総合得点: {score}点 / 100点
@@ -282,13 +281,21 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
 得意分野: {', '.join(strong_cats) if strong_cats else '特になし'}
 苦手分野: {', '.join(weak_cats) if weak_cats else '特になし'}
 
+【重要な観点】
+このテストはSPI対策ではなく、**日本企業で働くために必要な基礎力**を測るものです。
+以下の観点からコメントを作成してください：
+
+1. この学生が**仕事で活かせる強み**は何か
+2. **職場で伸ばすべき力**は何か
+3. **具体的な学習アドバイス**（仕事に直結する形で）
+
 【出力形式】
 以下の4つのセクションに分けて、全体で300〜400字程度で回答してください：
 
 💡 **総合評価**
-⭐ **強み**
-📚 **改善ポイント**
-🎯 **次のステップ**
+⭐ **仕事で活かせる強み**
+📚 **職場で伸ばすべき力**
+🎯 **次のステップ（具体的な行動）**
 
 全体として、学生のモチベーションが上がるような温かみのある表現を心がけてください。"""
     
