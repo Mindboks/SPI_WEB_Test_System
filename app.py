@@ -57,7 +57,7 @@ app.config.update(
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "1.3.2"
+APP_VERSION = "1.3.3"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
@@ -82,9 +82,7 @@ def to_jst_filter(value):
         value = value.replace(tzinfo=pytz.UTC)
     return value.astimezone(jst).strftime('%Y-%m-%d %H:%M:%S')
 
-# ====== データベース接続プール（修正版） ======
-connection_pool = None
-
+# ====== データベース接続プール（最終縮小版） ======
 def init_connection_pool():
     """接続プールを初期化（アプリ起動時に1回だけ）"""
     global connection_pool
@@ -92,27 +90,16 @@ def init_connection_pool():
     if not db_url:
         raise ValueError("DATABASE_URLが設定されていません")
     
-    # ★★★ URLからSSLパラメータを除去（重複防止） ★★★
-    if '?' in db_url:
-        db_url = db_url.split('?')[0]
-        print(f"【DBプール】SSLパラメータを除去しました")
+    # ★★★ URLにsslmodeを直接追加 ★★★
+    if '?' not in db_url:
+        db_url = db_url + '?sslmode=require'
+        print(f"【DBプール】sslmode=requireを追加しました")
     
-    # ★★★ SSLは必須（RenderのPostgreSQLはSSL必須） ★★★
-    try:
-        connection_pool = pool.SimpleConnectionPool(
-            1, 10,
-            dsn=db_url,
-            sslmode='require'
-        )
-        print(f"【DBプール】初期化完了 (最小1, 最大10, SSLモード: require)")
-    except Exception as e:
-        print(f"【DBプール】SSL require 失敗: {e}")
-        # フォールバック: SSLパラメータなし（デフォルトでSSLが有効になるはず）
-        connection_pool = pool.SimpleConnectionPool(
-            1, 10,
-            dsn=db_url
-        )
-        print(f"【DBプール】初期化完了 (最小1, 最大10, SSLモード: デフォルト)")
+    connection_pool = pool.SimpleConnectionPool(
+        1, 10,
+        dsn=db_url
+    )
+    print(f"【DBプール】初期化完了 (最小1, 最大10)")
 
 def get_db():
     """接続プールから接続を取得（リトライ付き）"""
