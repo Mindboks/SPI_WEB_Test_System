@@ -268,6 +268,23 @@
     #skill-text {
         font-size: 0.95rem;
     }
+    /* ★★★ Winキー長押しによるスタートメニュー表示を抑制（完全ではない） ★★★ */
+    body {
+        /* Windowsのスタートメニュー表示を抑制するためのスタイル */
+        -ms-touch-action: none;
+        touch-action: none;
+    }
+
+    /* 全画面時にメニューバーが表示されるのを抑制 */
+    :-webkit-full-screen {
+        /* 全画面時のスタイル */
+    }
+    :-moz-full-screen {
+        /* 全画面時のスタイル */
+    }
+    :fullscreen {
+        /* 全画面時のスタイル */
+    }
 </style>
 
 <script>
@@ -563,24 +580,92 @@ document.addEventListener('fullscreenchange', function() {
     });
 })();
 
-// ====== ★★★ キーボード制御（Win+Tab完全ブロック / Ctrl+Tabは警告） ★★★ ======
+// ====== ★★★ キーボード制御（Winキー完全ブロック） ★★★ ======
 document.addEventListener('keydown', function(e) {
     if (isSessionError || cheatDetected) return;
     
     // ★★★ Winキー（Meta）を完全ブロック ★★★
-    if (e.key === 'Meta' || e.key === 'MetaLeft' || e.key === 'MetaRight') {
+    if (e.key === 'Meta' || 
+        e.key === 'MetaLeft' || 
+        e.key === 'MetaRight' ||
+        e.key === 'OS' ||
+        e.key === 'Super' ||
+        e.code === 'MetaLeft' ||
+        e.code === 'MetaRight') {
+        
         e.preventDefault();
         e.stopPropagation();
         showToast('⚠️ Windowsキーは試験中は使用できません。', 3000);
+        setTimeout(function() {
+            showFullscreenWarning();
+        }, 500);
         return false;
     }
     
-    // ★★★ Ctrl+Tab（タブ切り替え）は警告表示 → 全画面に戻るよう促す ★★★
+    // ★★★ Win+Tab をブロック ★★★
+    if (e.metaKey && e.key === 'Tab') {
+        e.preventDefault();
+        e.stopPropagation();
+        showToast('⚠️ タスクビューは試験中は使用できません。', 3000);
+        setTimeout(function() {
+            showFullscreenWarning();
+        }, 500);
+        return false;
+    }
+    
+    // ★★★ Win+D（デスクトップ表示）をブロック ★★★
+    if (e.metaKey && (e.key === 'd' || e.key === 'D')) {
+        e.preventDefault();
+        e.stopPropagation();
+        showToast('⚠️ この操作は試験中は使用できません。', 3000);
+        return false;
+    }
+    
+    // ★★★ Win+E（エクスプローラー）をブロック ★★★
+    if (e.metaKey && (e.key === 'e' || e.key === 'E')) {
+        e.preventDefault();
+        e.stopPropagation();
+        showToast('⚠️ この操作は試験中は使用できません。', 3000);
+        return false;
+    }
+    
+    // ★★★ Win+R（ファイル名を指定して実行）をブロック ★★★
+    if (e.metaKey && (e.key === 'r' || e.key === 'R')) {
+        e.preventDefault();
+        e.stopPropagation();
+        showToast('⚠️ この操作は試験中は使用できません。', 3000);
+        return false;
+    }
+    
+    // ★★★ Win+L（ロック画面）をブロック ★★★
+    if (e.metaKey && (e.key === 'l' || e.key === 'L')) {
+        e.preventDefault();
+        e.stopPropagation();
+        showToast('⚠️ この操作は試験中は使用できません。', 3000);
+        return false;
+    }
+    
+    // ★★★ Win+I（設定）をブロック ★★★
+    if (e.metaKey && (e.key === 'i' || e.key === 'I')) {
+        e.preventDefault();
+        e.stopPropagation();
+        showToast('⚠️ この操作は試験中は使用できません。', 3000);
+        return false;
+    }
+    
+    // ★★★ Win+数字（タスクバーのアプリ起動）をブロック ★★★
+    if (e.metaKey && e.key >= '0' && e.key <= '9') {
+        e.preventDefault();
+        e.stopPropagation();
+        showToast('⚠️ この操作は試験中は使用できません。', 3000);
+        return false;
+    }
+    
+    // ★★★ Ctrl+Tab（タブ切り替え）は警告 ★★★
     if (e.ctrlKey && e.key === 'Tab') {
         e.preventDefault();
         e.stopPropagation();
         showToast('⚠️ タブ切り替えは禁止されています。全画面に戻ります。', 3000);
-        // 全画面警告を表示
         setTimeout(function() {
             showFullscreenWarning();
         }, 500);
@@ -609,21 +694,7 @@ document.addEventListener('keydown', function(e) {
         return false;
     }
     
-    // ★★★ Ctrl+W（タブ閉じ）も警告 ★★★
-    if (e.ctrlKey && (e.key === 'w' || e.key === 'W')) {
-        e.preventDefault();
-        showToast('⚠️ タブ閉じは禁止されています。', 3000);
-        return false;
-    }
-    
-    // ★★★ Alt+F4（ウィンドウ閉じ）も警告 ★★★
-    if (e.altKey && e.key === 'F4') {
-        e.preventDefault();
-        showToast('⚠️ ウィンドウ閉じは禁止されています。', 3000);
-        return false;
-    }
-    
-    // 全画面が解除された場合のチェック（フォーカス喪失ではない）
+    // 全画面が解除された場合のチェック
     if (!document.fullscreenElement && !cheatDetected && isFullscreen) {
         showFullscreenWarning();
         e.preventDefault();
@@ -662,6 +733,16 @@ document.addEventListener('keydown', function(e) {
     if (e.key === 'F5' || (e.ctrlKey && e.key === 'r') || (e.ctrlKey && e.shiftKey && e.key === 'R')) {
         e.preventDefault();
         showToast('⚠️ 試験中のリロードは禁止されています。', 3000);
+        return false;
+    }
+    if (e.ctrlKey && (e.key === 'w' || e.key === 'W')) {
+        e.preventDefault();
+        showToast('⚠️ タブ閉じは禁止されています。', 3000);
+        return false;
+    }
+    if (e.altKey && e.key === 'F4') {
+        e.preventDefault();
+        showToast('⚠️ ウィンドウ閉じは禁止されています。', 3000);
         return false;
     }
 });
