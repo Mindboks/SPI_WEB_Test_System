@@ -316,8 +316,6 @@
             var labelsAttr = dataElement.getAttribute('data-labels');
             var scoresAttr = dataElement.getAttribute('data-scores');
             
-            console.log('【デバッグ】data-labels (生データ):', labelsAttr);
-            console.log('【デバッグ】data-scores (生データ):', scoresAttr);
             
             if (labelsAttr && labelsAttr !== '[]' && labelsAttr !== '' && labelsAttr !== 'null' && labelsAttr !== 'None') {
                 labels = JSON.parse(labelsAttr);
@@ -331,10 +329,6 @@
                 scores = [];
             }
             
-            console.log('【デバッグ】パース後 labels:', labels);
-            console.log('【デバッグ】パース後 scores:', scores);
-            console.log('【デバッグ】labels の長さ:', labels.length);
-            console.log('【デバッグ】scores の長さ:', scores.length);
             
         } catch(e) {
             console.error('【デバッグ】データ解析エラー:', e);
