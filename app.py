@@ -57,7 +57,7 @@ app.config.update(
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "1.4.1"
+APP_VERSION = "1.4.3"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
@@ -937,10 +937,14 @@ def show_result(test_id, result_id):
             flash("結果が見つかりません。")
             return redirect(url_for('student_dashboard'))
 
+        # ★★★ detailsデータの確認とデフォルト値 ★★★
         details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
+        
+        # ★★★ デバッグ出力（Renderのログで確認） ★★★
         print(f"【デバッグ】details_data: {details_data}")
         print(f"【デバッグ】labels: {details_data.get('labels')}")
         print(f"【デバッグ】scores: {details_data.get('scores')}")
+        print(f"【デバッグ】res['details'] 生データ: {res.get('details')}")
         
         return render_template('result_page.html',
             res=dict(res),
@@ -957,7 +961,7 @@ def show_result(test_id, result_id):
         traceback.print_exc()
         flash("結果の表示中にエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
-
+    
 
 @app.route('/student/test/<int:test_id>/cheated', methods=['POST'])
 def cheated_test(test_id):

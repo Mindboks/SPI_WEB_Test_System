@@ -241,12 +241,18 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% for i in range(details.labels|length) %}
-                            <tr>
-                                <td class="fw-bold">{{ details.labels[i] }}</td>
-                                <td class="cat-score">{{ details.scores[i] }}%</td>
-                            </tr>
-                            {% endfor %}
+                            {% if details.labels and details.labels|length > 0 %}
+                                {% for i in range(details.labels|length) %}
+                                <tr>
+                                    <td class="fw-bold">{{ details.labels[i] }}</td>
+                                    <td class="cat-score">{{ details.scores[i] }}%</td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="2" class="text-center text-muted">データがありません</td>
+                                </tr>
+                            {% endif %}
                         </tbody>
                     </table>
                 </div>
@@ -270,8 +276,8 @@
     </div>
     
     <div id="chart-data" 
-         data-labels="{{ details.labels | tojson | safe }}" 
-         data-scores="{{ details.scores | tojson | safe }}" 
+         data-labels="{{ details.labels | tojson | safe if details.labels else '[]' }}" 
+         data-scores="{{ details.scores | tojson | safe if details.scores else '[]' }}" 
          style="display:none;"></div>
     
     <footer class="footer-bar">
@@ -303,7 +309,7 @@ function renderRadarChart() {
         return;
     }
     
-    // ★★★ データを直接取得（属性から） ★★★
+    // ★★★ データを直接取得 ★★★
     let labels = [];
     let scores = [];
     
@@ -315,13 +321,13 @@ function renderRadarChart() {
         console.log('【デバッグ】data-scores (生データ):', scoresAttr);
         
         // ★★★ 空文字列や '[]' の場合の処理 ★★★
-        if (labelsAttr && labelsAttr !== '[]' && labelsAttr !== '' && labelsAttr !== 'null') {
+        if (labelsAttr && labelsAttr !== '[]' && labelsAttr !== '' && labelsAttr !== 'null' && labelsAttr !== 'None') {
             labels = JSON.parse(labelsAttr);
         } else {
             labels = [];
         }
         
-        if (scoresAttr && scoresAttr !== '[]' && scoresAttr !== '' && scoresAttr !== 'null') {
+        if (scoresAttr && scoresAttr !== '[]' && scoresAttr !== '' && scoresAttr !== 'null' && scoresAttr !== 'None') {
             scores = JSON.parse(scoresAttr);
         } else {
             scores = [];
@@ -329,6 +335,8 @@ function renderRadarChart() {
         
         console.log('【デバッグ】パース後 labels:', labels);
         console.log('【デバッグ】パース後 scores:', scores);
+        console.log('【デバッグ】labels の長さ:', labels.length);
+        console.log('【デバッグ】scores の長さ:', scores.length);
         
     } catch(e) {
         console.error('【デバッグ】データ解析エラー:', e);
@@ -339,15 +347,16 @@ function renderRadarChart() {
     // ★★★ データがない場合のダミーデータ ★★★
     if (!labels || labels.length === 0 || !scores || scores.length === 0) {
         console.log('【デバッグ】データがないためダミーデータを表示');
-        labels = ['データなし'];
+        labels = ['データがありません'];
         scores = [0];
     }
     
-    // ★★★ チャートを描画（データがあれば） ★★★
+    // ★★★ チャートを描画 ★★★
     try {
         // 既存のチャートがあれば破棄
         if (window.myRadarChart) {
             window.myRadarChart.destroy();
+            window.myRadarChart = null;
         }
         
         window.myRadarChart = new Chart(ctx, {
@@ -409,6 +418,8 @@ function renderRadarChart() {
         console.log('【デバッグ】レーダーチャート描画完了');
     } catch(e) {
         console.error('【デバッグ】チャート描画エラー:', e);
+        // エラー時はHTMLでメッセージ表示
+        canvas.parentElement.innerHTML = '<div class="text-center text-muted py-5">チャートの描画に失敗しました</div>';
     }
 }
 
@@ -449,20 +460,20 @@ function loadAiComment() {
 (function() {
     console.log('【デバッグ】result_page.html 読み込み開始');
     
-    // レーダーチャートを描画（即時実行 + 遅延実行）
+    // レーダーチャートを描画（即時）
     renderRadarChart();
     
-    // 確実に表示させるため、遅延実行も追加
+    // 500ms後にもう一度（DOM完全描画後）
     setTimeout(function() {
-        console.log('【デバッグ】遅延実行: レーダーチャート再描画');
+        console.log('【デバッグ】500ms遅延実行: レーダーチャート再描画');
         renderRadarChart();
     }, 500);
     
-    // さらに確実に（2秒後）
+    // 1.5秒後にもう一度（確実に）
     setTimeout(function() {
-        console.log('【デバッグ】2秒後遅延実行: レーダーチャート再描画');
+        console.log('【デバッグ】1500ms遅延実行: レーダーチャート再描画');
         renderRadarChart();
-    }, 2000);
+    }, 1500);
     
     // AIコメントを取得
     loadAiComment();
