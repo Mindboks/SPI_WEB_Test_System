@@ -57,7 +57,7 @@ app.config.update(
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "1.3.3"
+APP_VERSION = "1.3.4"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
@@ -911,38 +911,51 @@ def api_get_ai_comment(result_id):
         print(f"AI comment error: {e}")
         return jsonify({'error': str(e)}), 500
 
+
 @app.route('/student/test/<int:test_id>/result/<int:result_id>')
 def show_result(test_id, result_id):
     if session.get('role') != 'student':
         return redirect(url_for('login'))
+    
     conn = None
     try:
         conn = get_db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
+        
         cur.execute('''
             SELECT r.*, u.name as student_name 
             FROM results r 
             JOIN users u ON r.user_id = u.id 
             WHERE r.id = %s AND r.user_id = %s
         ''', (result_id, session.get('user_id')))
+        
         res = cur.fetchone()
+        
         cur.execute('SELECT name FROM tests WHERE id = %s', (test_id,))
         test = cur.fetchone()
         test_name = test['name'] if test else "不明なテスト"
+        
         cur.close()
         return_db(conn)
+        
         if not res:
             flash("結果が見つかりません。")
             return redirect(url_for('student_dashboard'))
-        try:
-            details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
-        except json.JSONDecodeError:
-            details_data = {'labels': [], 'scores': []}
+
+        # ★★★ detailsデータの確認（デバッグ用） ★★★
+        details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
+        print(f"【デバッグ】details_data: {details_data}")
+        print(f"【デバッグ】labels: {details_data.get('labels')}")
+        print(f"【デバッグ】scores: {details_data.get('scores')}")
+        
+        # AIコメントは呼ばない → テンプレートに result_id だけ渡す
         return render_template('result_page.html',
             res=dict(res),
             details=details_data,
             result_id=result_id,
-            test_name=test_name)
+            test_name=test_name
+        )
+        
     except Exception as e:
         if conn:
             return_db(conn)
@@ -951,6 +964,7 @@ def show_result(test_id, result_id):
         traceback.print_exc()
         flash("結果の表示中にエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
+
 
 @app.route('/student/test/<int:test_id>/cheated', methods=['POST'])
 def cheated_test(test_id):

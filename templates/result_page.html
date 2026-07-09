@@ -287,118 +287,183 @@
 
 <script>
     (function() {
-        // ====== レーダーチャート描画 ======
-        function initRadarChart() {
-            console.log('【デバッグ】initRadarChart 開始');
+        // ====== レーダーチャート描画（デバッグ強化版） ======
+        const canvas = document.getElementById('radarChart');
+        if (!canvas) {
+            console.error('radarChart要素が見つかりません');
+            return;
+        }
+        
+        const ctx = canvas.getContext('2d');
+        const dataElement = document.getElementById('chart-data');
+        
+        if (!dataElement) {
+            console.error('chart-data要素が見つかりません');
+            return;
+        }
+        
+        let labels = [];
+        let scores = [];
+        
+        try {
+            const labelsAttr = dataElement.getAttribute('data-labels');
+            const scoresAttr = dataElement.getAttribute('data-scores');
             
-            const canvas = document.getElementById('radarChart');
-            if (!canvas) {
-                console.error('radarChart要素が見つかりません');
-                return;
-            }
+            console.log('【デバッグ】data-labels:', labelsAttr);
+            console.log('【デバッグ】data-scores:', scoresAttr);
             
-            const ctx = canvas.getContext('2d');
-            const dataElement = document.getElementById('chart-data');
-            
-            if (!dataElement) {
-                console.error('chart-data要素が見つかりません');
-                return;
-            }
-            
-            let labels = [];
-            let scores = [];
-            
-            try {
-                const labelsAttr = dataElement.getAttribute('data-labels');
-                const scoresAttr = dataElement.getAttribute('data-scores');
-                
-                labels = (labelsAttr && labelsAttr !== '[]') ? JSON.parse(labelsAttr) : [];
-                scores = (scoresAttr && scoresAttr !== '[]') ? JSON.parse(scoresAttr) : [];
-                
-                console.log('labels:', labels);
-                console.log('scores:', scores);
-                
-            } catch(e) {
-                console.error('データ解析エラー:', e);
+            // ★★★ 空文字列や '[]' の場合の処理 ★★★
+            if (labelsAttr && labelsAttr !== '[]' && labelsAttr !== '') {
+                labels = JSON.parse(labelsAttr);
+            } else {
                 labels = [];
+            }
+            
+            if (scoresAttr && scoresAttr !== '[]' && scoresAttr !== '') {
+                scores = JSON.parse(scoresAttr);
+            } else {
                 scores = [];
             }
             
-            if (!labels || labels.length === 0 || !scores || scores.length === 0) {
-                const parent = canvas.parentNode;
-                const existingMsg = parent.querySelector('.no-data-message');
-                if (existingMsg) existingMsg.remove();
-                
-                const msg = document.createElement('div');
-                msg.className = 'no-data-message';
-                msg.style.cssText = 'color: #94a3b8; text-align: center; padding: 40px 20px; font-size: 1rem; width: 100%;';
-                msg.innerHTML = '📊 表示するデータがありません';
-                parent.appendChild(msg);
-                return;
-            }
+            console.log('【デバッグ】パース後 labels:', labels);
+            console.log('【デバッグ】パース後 scores:', scores);
             
-            try {
-                new Chart(ctx, {
-                    type: 'radar',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: '正解率 (%)',
-                            data: scores,
-                            backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                            borderColor: '#10b981',
-                            borderWidth: 3,
-                            pointBackgroundColor: '#ffffff',
-                            pointBorderColor: '#10b981',
-                            pointRadius: 6,
-                            pointHoverRadius: 8,
-                            fill: true
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        return `${context.label}: ${context.raw}%`;
-                                    }
+        } catch(e) {
+            console.error('データ解析エラー:', e);
+            labels = [];
+            scores = [];
+        }
+        
+        // ★★★ データがない場合の処理（ダミーデータを表示） ★★★
+        if (!labels || labels.length === 0 || !scores || scores.length === 0) {
+            console.log('【デバッグ】データがないためダミーデータを表示');
+            labels = ['データなし'];
+            scores = [0];
+            
+            // ダミーデータでチャートを表示
+            new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '正解率 (%)',
+                        data: scores,
+                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                        borderColor: '#10b981',
+                        borderWidth: 3,
+                        pointBackgroundColor: '#ffffff',
+                        pointBorderColor: '#10b981',
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.label}: ${context.raw}%`;
                                 }
                             }
-                        },
-                        scales: {
-                            r: {
-                                beginAtZero: true,
-                                max: 100,
-                                ticks: {
-                                    stepSize: 20,
-                                    backdropColor: 'transparent'
-                                },
-                                grid: {
-                                    color: 'rgba(255,255,255,0.12)'
-                                },
-                                angleLines: {
-                                    color: 'rgba(255,255,255,0.12)'
-                                },
-                                pointLabels: {
-                                    color: '#f8fafc',
-                                    font: {
-                                        size: 14,
-                                        weight: 'bold',
-                                        family: 'Noto Sans JP'
-                                    }
+                        }
+                    },
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                stepSize: 20,
+                                backdropColor: 'transparent'
+                            },
+                            grid: {
+                                color: 'rgba(255,255,255,0.12)'
+                            },
+                            angleLines: {
+                                color: 'rgba(255,255,255,0.12)'
+                            },
+                            pointLabels: {
+                                color: '#f8fafc',
+                                font: {
+                                    size: 14,
+                                    weight: 'bold',
+                                    family: 'Noto Sans JP'
                                 }
                             }
                         }
                     }
-                });
-                console.log('レーダーチャート描画完了');
-            } catch(e) {
-                console.error('チャート描画エラー:', e);
-            }
+                }
+            });
+            console.log('【デバッグ】ダミーレーダーチャート描画完了');
+            return;
         }
+        
+        // ★★★ データがある場合のチャート描画 ★★★
+        new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: '正解率 (%)',
+                    data: scores,
+                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                    borderColor: '#10b981',
+                    borderWidth: 3,
+                    pointBackgroundColor: '#ffffff',
+                    pointBorderColor: '#10b981',
+                    pointRadius: 6,
+                    pointHoverRadius: 8,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.label}: ${context.raw}%`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    r: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            stepSize: 20,
+                            backdropColor: 'transparent'
+                        },
+                        grid: {
+                            color: 'rgba(255,255,255,0.12)'
+                        },
+                        angleLines: {
+                            color: 'rgba(255,255,255,0.12)'
+                        },
+                        pointLabels: {
+                            color: '#f8fafc',
+                            font: {
+                                size: 14,
+                                weight: 'bold',
+                                family: 'Noto Sans JP'
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        console.log('【デバッグ】レーダーチャート描画完了');
+        
+        // ====== 以下、既存のスキルサマリー表示など ======
+        // ...（省略）
+    })();
+
 
         // ====== AIコメント取得 ======
         const resultId = "{{ result_id }}";
