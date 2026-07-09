@@ -196,6 +196,36 @@
         max-height: 350px;
         overflow-y: auto;
     }
+    /* ★★★ 右クリック禁止のためのスタイル ★★★ */
+    * {
+        -webkit-user-select: none !important;
+        -moz-user-select: none !important;
+        -ms-user-select: none !important;
+        user-select: none !important;
+        -webkit-touch-callout: none !important;
+    }
+
+    /* ラジオボタンとチェックボックスは選択可能に */
+    input[type="radio"], 
+    input[type="checkbox"] {
+        -webkit-user-select: auto !important;
+        -moz-user-select: auto !important;
+        -ms-user-select: auto !important;
+        user-select: auto !important;
+    }
+
+    /* 問題文は選択できないが、見やすさは維持 */
+    #question-text {
+        cursor: default;
+    }
+
+    /* 選択肢のテキストも選択不可 */
+    .choice-label span {
+        -webkit-user-select: none !important;
+        -moz-user-select: none !important;
+        -ms-user-select: none !important;
+        user-select: none !important;
+    }
     @media (max-width: 768px) {
         #question-text { max-height: 100px; font-size: 1rem; }
         #choices-container { max-height: 300px; }
@@ -469,15 +499,95 @@ window.addEventListener('focus', function() {
     }
 });
 
-// ====== キーボード制御（Win+Tab対策 追加） ======
+// ====== ★★★ 右クリック（コンテキストメニュー）完全無効化 ★★★ ======
+(function() {
+    // 1. コンテキストメニューを無効化
+    document.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+    });
+    
+    // 2. マウスの右クリック（ボタン2）をブロック
+    document.addEventListener('mousedown', function(e) {
+        if (e.button === 2) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }
+    });
+    
+    // 3. マウスアップでもブロック
+    document.addEventListener('mouseup', function(e) {
+        if (e.button === 2) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }
+    });
+    
+    // 4. コピー・ペースト・切り取りをブロック
+    document.addEventListener('copy', function(e) {
+        e.preventDefault();
+        return false;
+    });
+    document.addEventListener('paste', function(e) {
+        e.preventDefault();
+        return false;
+    });
+    document.addEventListener('cut', function(e) {
+        e.preventDefault();
+        return false;
+    });
+    
+    // 5. 選択開始をブロック（テキスト選択）
+    document.addEventListener('selectstart', function(e) {
+        e.preventDefault();
+        return false;
+    });
+    
+    // 6. ドラッグをブロック
+    document.addEventListener('dragstart', function(e) {
+        e.preventDefault();
+        return false;
+    });
+    
+    // 7. モバイルの長押しメニューをブロック
+    let touchTimer = null;
+    document.addEventListener('touchstart', function(e) {
+        touchTimer = setTimeout(function() {
+            e.preventDefault();
+            showToast('⚠️ 長押し操作は禁止されています。', 2000);
+        }, 800);
+    }, { passive: false });
+    
+    document.addEventListener('touchend', function(e) {
+        clearTimeout(touchTimer);
+    });
+    
+    document.addEventListener('touchmove', function(e) {
+        clearTimeout(touchTimer);
+    });
+    
+    // 8. キーボードでのコンテキストメニュー（Shift+F10）もブロック
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+            e.preventDefault();
+            e.stopPropagation();
+            showToast('⚠️ この操作は禁止されています。', 2000);
+            return false;
+        }
+    });
+})();
+
+// ====== キーボード制御 ======
 document.addEventListener('keydown', function(e) {
     if (isSessionError) return;
     
-    // ★★★ Winキー（Meta）を検知してブロック ★★★
+    // Winキー
     if (e.key === 'Meta' || e.key === 'MetaLeft' || e.key === 'MetaRight') {
         e.preventDefault();
         showToast('⚠️ Windowsキーは試験中は使用できません。', 3000);
-        // Winキーを押したらフォーカス喪失とみなす
         focusLostCount++;
         if (focusLostCount >= MAX_FOCUS_LOST) {
             cheatDetected = true;
@@ -489,7 +599,7 @@ document.addEventListener('keydown', function(e) {
         return false;
     }
     
-    // ★★★ Ctrl+Tab をブロック（タブ切り替え禁止） ★★★
+    // Ctrl+Tab
     if (e.ctrlKey && e.key === 'Tab') {
         e.preventDefault();
         showToast('⚠️ タブ切り替えは試験中は禁止されています。', 3000);
@@ -504,7 +614,7 @@ document.addEventListener('keydown', function(e) {
         return false;
     }
     
-    // ★★★ Ctrl+Shift+Tab もブロック ★★★
+    // Ctrl+Shift+Tab
     if (e.ctrlKey && e.shiftKey && e.key === 'Tab') {
         e.preventDefault();
         showToast('⚠️ タブ切り替えは試験中は禁止されています。', 3000);
@@ -519,7 +629,7 @@ document.addEventListener('keydown', function(e) {
         return false;
     }
     
-    // ★★★ Alt+Tab をブロック（Windows アプリ切り替え） ★★★
+    // Alt+Tab
     if (e.altKey && e.key === 'Tab') {
         e.preventDefault();
         showToast('⚠️ アプリ切り替えは試験中は禁止されています。', 3000);
@@ -534,7 +644,6 @@ document.addEventListener('keydown', function(e) {
         return false;
     }
     
-    // 以下、既存のキーボード制御（変更なし）
     if (!document.fullscreenElement && !cheatDetected) {
         if (overlay) overlay.style.display = 'flex';
         e.preventDefault();
@@ -695,16 +804,10 @@ function loadQuestion(qNo) {
 }
 
 function displayQuestion(data) {
-    // 問題番号
     document.getElementById("q-no-badge").innerText = `問 ${data.q_no} / 全 ${totalQuestions} 問`;
-    
-    // カテゴリ
     document.getElementById("category-badge").innerText = `カテゴリ: ${data.category || '未分類'}`;
-    
-    // 問題文
     document.getElementById("question-text").innerHTML = data.question || '（問題文がありません）';
     
-    // ★★★ 段階1: スキル表示（仕事で役立つ力） ★★★
     const skillText = document.getElementById('skill-text');
     const skillIndicator = document.getElementById('skill-indicator');
     if (data.category && skillMap[data.category]) {
@@ -714,7 +817,6 @@ function displayQuestion(data) {
         skillIndicator.style.display = 'none';
     }
     
-    // ターゲット
     const targetArea = document.getElementById("target-area");
     const targetBox = document.getElementById("target-box");
     if (data.target && data.target.trim() !== "") {
@@ -724,7 +826,6 @@ function displayQuestion(data) {
         targetArea.style.display = "none";
     }
     
-    // 次へボタン
     const nextBtn = document.getElementById("next-btn");
     if (currentQNo >= totalQuestions) {
         nextBtn.innerHTML = `最終解答を記録して提出画面へ <i class="bi bi-box-arrow-up"></i>`;
@@ -735,7 +836,6 @@ function displayQuestion(data) {
     nextBtn.classList.remove('btn-saving');
     nextBtn.classList.add('btn-success');
     
-    // ★★★ 選択肢（修正版：ラジオボタンを常に空に） ★★★
     const container = document.getElementById("choices-container");
     container.innerHTML = "";
     const choices = data.choices || {};
@@ -756,7 +856,6 @@ function displayQuestion(data) {
     choiceKeys.forEach(key => {
         const num = key.replace('a', '');
         const choiceText = choices[key];
-        // ★★★ isChecked を常に false に（常に空の状態） ★★★
         const col = document.createElement("div");
         col.className = "col";
         col.innerHTML = `
@@ -768,7 +867,7 @@ function displayQuestion(data) {
         container.appendChild(col);
     });
     
-    // ★★★ 既存の回答があれば、選択状態を復元（ここで復元） ★★★
+    // ★★★ 既存の回答があれば、選択状態を復元 ★★★
     const currentAnswer = data.current_answer;
     if (currentAnswer) {
         const radio = document.querySelector(`input[name="choice"][value="${currentAnswer}"]`);
@@ -781,13 +880,14 @@ function displayQuestion(data) {
     
     renderNavigation(data.status_list || []);
 }
+
 function highlightChoice(num) {
     document.querySelectorAll('.choice-label').forEach(el => el.classList.remove('selected-choice'));
     const activeLabel = document.getElementById(`label-choice-${num}`);
     if(activeLabel) activeLabel.classList.add('selected-choice');
 }
 
-// ====== 解答保存（修正版：タイムアウト対応 + 二重送信防止） ======
+// ====== 解答保存（修正版） ======
 function submitAnswer(isSkip) {
     if (isLoading) return;
     if (cheatDetected || isSessionError) return;
@@ -803,8 +903,6 @@ function submitAnswer(isSkip) {
     }
     
     const nextBtn = document.getElementById("next-btn");
-    
-    // ★★★ 二重送信防止（既に保存中なら何もしない） ★★★
     if (nextBtn.disabled) {
         showToast('⏳ 保存中です。しばらくお待ちください...', 2000);
         return;
@@ -817,12 +915,9 @@ function submitAnswer(isSkip) {
     
     showDebug(`回答保存: Q${currentQNo}, choice=${selectedChoice || 'skip'}`);
     
-    // ★★★ タイムアウトを設定（15秒でタイムアウト） ★★★
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
         controller.abort();
-        showDebug('【タイムアウト】回答保存がタイムアウトしました');
-        // タイムアウト時はボタンを戻す
         nextBtn.disabled = false;
         nextBtn.classList.remove('btn-saving');
         nextBtn.classList.add('btn-success');
@@ -855,7 +950,6 @@ function submitAnswer(isSkip) {
                 window.location.replace(`/student/test/${testId}/submit`);
             }, 1000);
         } else {
-            // ★★★ 次の問題へ遷移する前にボタンを一旦戻す（次の問題読み込み時に再度変更される） ★★★
             nextBtn.disabled = false;
             nextBtn.classList.remove('btn-saving');
             nextBtn.classList.add('btn-success');
@@ -866,8 +960,6 @@ function submitAnswer(isSkip) {
     .catch(error => {
         clearTimeout(timeoutId);
         showDebug(`回答保存エラー: ${error.message}`);
-        
-        // ★★★ エラー時は確実にボタンを戻す ★★★
         nextBtn.disabled = false;
         nextBtn.classList.remove('btn-saving');
         nextBtn.classList.add('btn-success');
@@ -875,7 +967,6 @@ function submitAnswer(isSkip) {
             `最終解答を記録して提出画面へ <i class="bi bi-box-arrow-up"></i>` : 
             `次の問題へ / Next <i class="bi bi-chevron-right"></i>`;
         
-        // エラーメッセージを表示
         if (error.name === 'AbortError') {
             showToast('⏰ 通信がタイムアウトしました。ネットワーク状態を確認してください。', 5000);
         } else {
