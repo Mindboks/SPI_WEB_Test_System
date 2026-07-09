@@ -285,9 +285,9 @@
 </div>
 
 <script>
-// ★★★ レーダーチャート初期化関数（独立して定義） ★★★
-function initRadarChart() {
-    console.log('【デバッグ】initRadarChart 開始');
+// ★★★ レーダーチャートを確実に表示する関数 ★★★
+function renderRadarChart() {
+    console.log('【デバッグ】renderRadarChart 開始');
     
     const canvas = document.getElementById('radarChart');
     if (!canvas) {
@@ -303,6 +303,7 @@ function initRadarChart() {
         return;
     }
     
+    // ★★★ データを直接取得（属性から） ★★★
     let labels = [];
     let scores = [];
     
@@ -310,16 +311,17 @@ function initRadarChart() {
         const labelsAttr = dataElement.getAttribute('data-labels');
         const scoresAttr = dataElement.getAttribute('data-scores');
         
-        console.log('【デバッグ】data-labels:', labelsAttr);
-        console.log('【デバッグ】data-scores:', scoresAttr);
+        console.log('【デバッグ】data-labels (生データ):', labelsAttr);
+        console.log('【デバッグ】data-scores (生データ):', scoresAttr);
         
-        if (labelsAttr && labelsAttr !== '[]' && labelsAttr !== '') {
+        // ★★★ 空文字列や '[]' の場合の処理 ★★★
+        if (labelsAttr && labelsAttr !== '[]' && labelsAttr !== '' && labelsAttr !== 'null') {
             labels = JSON.parse(labelsAttr);
         } else {
             labels = [];
         }
         
-        if (scoresAttr && scoresAttr !== '[]' && scoresAttr !== '') {
+        if (scoresAttr && scoresAttr !== '[]' && scoresAttr !== '' && scoresAttr !== 'null') {
             scores = JSON.parse(scoresAttr);
         } else {
             scores = [];
@@ -329,76 +331,85 @@ function initRadarChart() {
         console.log('【デバッグ】パース後 scores:', scores);
         
     } catch(e) {
-        console.error('データ解析エラー:', e);
+        console.error('【デバッグ】データ解析エラー:', e);
         labels = [];
         scores = [];
     }
     
-    // データがない場合のダミーデータ
+    // ★★★ データがない場合のダミーデータ ★★★
     if (!labels || labels.length === 0 || !scores || scores.length === 0) {
         console.log('【デバッグ】データがないためダミーデータを表示');
         labels = ['データなし'];
         scores = [0];
     }
     
-    // チャートを描画
-    new Chart(ctx, {
-        type: 'radar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: '正解率 (%)',
-                data: scores,
-                backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                borderColor: '#10b981',
-                borderWidth: 3,
-                pointBackgroundColor: '#ffffff',
-                pointBorderColor: '#10b981',
-                pointRadius: 6,
-                pointHoverRadius: 8,
-                fill: true
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return `${context.label}: ${context.raw}%`;
+    // ★★★ チャートを描画（データがあれば） ★★★
+    try {
+        // 既存のチャートがあれば破棄
+        if (window.myRadarChart) {
+            window.myRadarChart.destroy();
+        }
+        
+        window.myRadarChart = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: '正解率 (%)',
+                    data: scores,
+                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                    borderColor: '#10b981',
+                    borderWidth: 3,
+                    pointBackgroundColor: '#ffffff',
+                    pointBorderColor: '#10b981',
+                    pointRadius: 6,
+                    pointHoverRadius: 8,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.label}: ${context.raw}%`;
+                            }
                         }
                     }
-                }
-            },
-            scales: {
-                r: {
-                    beginAtZero: true,
-                    max: 100,
-                    ticks: {
-                        stepSize: 20,
-                        backdropColor: 'transparent'
-                    },
-                    grid: {
-                        color: 'rgba(255,255,255,0.12)'
-                    },
-                    angleLines: {
-                        color: 'rgba(255,255,255,0.12)'
-                    },
-                    pointLabels: {
-                        color: '#f8fafc',
-                        font: {
-                            size: 14,
-                            weight: 'bold',
-                            family: 'Noto Sans JP'
+                },
+                scales: {
+                    r: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            stepSize: 20,
+                            backdropColor: 'transparent'
+                        },
+                        grid: {
+                            color: 'rgba(255,255,255,0.12)'
+                        },
+                        angleLines: {
+                            color: 'rgba(255,255,255,0.12)'
+                        },
+                        pointLabels: {
+                            color: '#f8fafc',
+                            font: {
+                                size: 14,
+                                weight: 'bold',
+                                family: 'Noto Sans JP'
+                            }
                         }
                     }
                 }
             }
-        }
-    });
-    console.log('【デバッグ】レーダーチャート描画完了');
+        });
+        console.log('【デバッグ】レーダーチャート描画完了');
+    } catch(e) {
+        console.error('【デバッグ】チャート描画エラー:', e);
+    }
 }
 
 // ★★★ AIコメント取得 ★★★
@@ -408,6 +419,8 @@ function loadAiComment() {
     const commentBody = document.getElementById('comment-body');
     
     if (!resultId || !commentLoading || !commentBody) return;
+    
+    console.log('【デバッグ】AIコメント取得開始: resultId=' + resultId);
     
     fetch(`/api/result/${resultId}/ai_comment`)
         .then(res => {
@@ -422,6 +435,7 @@ function loadAiComment() {
                 commentBody.innerText = 'コメントを取得できませんでした。';
             }
             commentBody.style.display = 'block';
+            console.log('【デバッグ】AIコメント取得完了');
         })
         .catch(error => {
             console.error('AIコメント取得エラー:', error);
@@ -435,23 +449,32 @@ function loadAiComment() {
 (function() {
     console.log('【デバッグ】result_page.html 読み込み開始');
     
-    // レーダーチャートを初期化
-    if (document.readyState === 'complete') {
-        setTimeout(initRadarChart, 300);
-    } else {
-        window.addEventListener('load', function() {
-            setTimeout(initRadarChart, 300);
-        });
-    }
+    // レーダーチャートを描画（即時実行 + 遅延実行）
+    renderRadarChart();
     
-    // 念のため2秒後にも実行（確実に表示させる）
-    setTimeout(initRadarChart, 2000);
+    // 確実に表示させるため、遅延実行も追加
+    setTimeout(function() {
+        console.log('【デバッグ】遅延実行: レーダーチャート再描画');
+        renderRadarChart();
+    }, 500);
+    
+    // さらに確実に（2秒後）
+    setTimeout(function() {
+        console.log('【デバッグ】2秒後遅延実行: レーダーチャート再描画');
+        renderRadarChart();
+    }, 2000);
     
     // AIコメントを取得
     loadAiComment();
     
     console.log('【デバッグ】result_page.html 読み込み完了');
 })();
+
+// ★★★ ウィンドウリサイズ時にも再描画 ★★★
+window.addEventListener('resize', function() {
+    console.log('【デバッグ】リサイズ: レーダーチャート再描画');
+    renderRadarChart();
+});
 </script>
 </body>
 </html>
