@@ -272,8 +272,8 @@
     </div>
     
     <div id="chart-data" 
-         data-labels="{{ details.labels | tojson | safe if details.labels else '[]' }}" 
-         data-scores="{{ details.scores | tojson | safe if details.scores else '[]' }}" 
+         data-labels='{{ details.labels | tojson | safe if details.labels else "[]" }}' 
+         data-scores='{{ details.scores | tojson | safe if details.scores else "[]" }}' 
          style="display:none;"></div>
     
     <footer class="footer-bar">
@@ -287,204 +287,199 @@
 </div>
 
 <script>
-// ★★★ レーダーチャート描画関数（完全版） ★★★
-function renderRadarChart() {
-    console.log('【デバッグ】renderRadarChart 開始');
+// ★★★ ページ読み込み完了後に確実に実行 ★★★
+(function() {
+    console.log('【デバッグ】result_page.html 読み込み開始 (ver.2)');
     
-    const canvas = document.getElementById('radarChart');
-    if (!canvas) {
-        console.error('【エラー】radarChart要素が見つかりません');
-        return;
-    }
-    
-    const ctx = canvas.getContext('2d');
-    const dataElement = document.getElementById('chart-data');
-    
-    if (!dataElement) {
-        console.error('【エラー】chart-data要素が見つかりません');
-        return;
-    }
-    
-    let labels = [];
-    let scores = [];
-    
-    try {
-        const labelsAttr = dataElement.getAttribute('data-labels');
-        const scoresAttr = dataElement.getAttribute('data-scores');
+    // ★★★ チャート描画関数 ★★★
+    function renderRadarChart() {
+        console.log('【デバッグ】renderRadarChart 開始');
         
-        console.log('【デバッグ】data-labels (生データ):', labelsAttr);
-        console.log('【デバッグ】data-scores (生データ):', scoresAttr);
-        
-        if (labelsAttr && labelsAttr !== '[]' && labelsAttr !== '' && labelsAttr !== 'null' && labelsAttr !== 'None') {
-            labels = JSON.parse(labelsAttr);
-        } else {
-            labels = [];
+        var canvas = document.getElementById('radarChart');
+        if (!canvas) {
+            console.error('【エラー】radarChart要素が見つかりません');
+            return;
         }
         
-        if (scoresAttr && scoresAttr !== '[]' && scoresAttr !== '' && scoresAttr !== 'null' && scoresAttr !== 'None') {
-            scores = JSON.parse(scoresAttr);
-        } else {
-            scores = [];
+        var ctx = canvas.getContext('2d');
+        var dataElement = document.getElementById('chart-data');
+        
+        if (!dataElement) {
+            console.error('【エラー】chart-data要素が見つかりません');
+            return;
         }
         
-        console.log('【デバッグ】パース後 labels:', labels);
-        console.log('【デバッグ】パース後 scores:', scores);
-        console.log('【デバッグ】labels の長さ:', labels.length);
-        console.log('【デバッグ】scores の長さ:', scores.length);
+        var labels = [];
+        var scores = [];
         
-    } catch(e) {
-        console.error('【デバッグ】データ解析エラー:', e);
-        labels = ['データがありません'];
-        scores = [0];
-    }
-    
-    // ★★★ データがない場合のダミーデータ ★★★
-    if (!labels || labels.length === 0 || !scores || scores.length === 0) {
-        console.log('【デバッグ】データがないためダミーデータを表示');
-        labels = ['データがありません'];
-        scores = [0];
-    }
-    
-    // ★★★ チャートを描画 ★★★
-    try {
-        // 既存のチャートがあれば破棄
-        if (window.myRadarChart) {
-            window.myRadarChart.destroy();
-            window.myRadarChart = null;
+        try {
+            var labelsAttr = dataElement.getAttribute('data-labels');
+            var scoresAttr = dataElement.getAttribute('data-scores');
+            
+            console.log('【デバッグ】data-labels (生データ):', labelsAttr);
+            console.log('【デバッグ】data-scores (生データ):', scoresAttr);
+            
+            if (labelsAttr && labelsAttr !== '[]' && labelsAttr !== '' && labelsAttr !== 'null' && labelsAttr !== 'None') {
+                labels = JSON.parse(labelsAttr);
+            } else {
+                labels = [];
+            }
+            
+            if (scoresAttr && scoresAttr !== '[]' && scoresAttr !== '' && scoresAttr !== 'null' && scoresAttr !== 'None') {
+                scores = JSON.parse(scoresAttr);
+            } else {
+                scores = [];
+            }
+            
+            console.log('【デバッグ】パース後 labels:', labels);
+            console.log('【デバッグ】パース後 scores:', scores);
+            console.log('【デバッグ】labels の長さ:', labels.length);
+            console.log('【デバッグ】scores の長さ:', scores.length);
+            
+        } catch(e) {
+            console.error('【デバッグ】データ解析エラー:', e);
+            labels = ['データがありません'];
+            scores = [0];
         }
         
-        window.myRadarChart = new Chart(ctx, {
-            type: 'radar',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: '正解率 (%)',
-                    data: scores,
-                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                    borderColor: '#10b981',
-                    borderWidth: 3,
-                    pointBackgroundColor: '#ffffff',
-                    pointBorderColor: '#10b981',
-                    pointRadius: 6,
-                    pointHoverRadius: 8,
-                    fill: true
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                return `${context.label}: ${context.raw}%`;
+        // データがない場合のダミーデータ
+        if (!labels || labels.length === 0 || !scores || scores.length === 0) {
+            console.log('【デバッグ】データがないためダミーデータを表示');
+            labels = ['データがありません'];
+            scores = [0];
+        }
+        
+        // ★★★ Chart.js が利用可能かチェック ★★★
+        if (typeof Chart === 'undefined') {
+            console.error('【エラー】Chart.js が読み込まれていません');
+            canvas.parentElement.innerHTML = '<div class="text-center text-warning py-5">Chart.js の読み込みに失敗しました。ページを再読み込みしてください。</div>';
+            return;
+        }
+        
+        // チャートを描画
+        try {
+            // 既存のチャートを破棄
+            if (window.myRadarChart) {
+                window.myRadarChart.destroy();
+                window.myRadarChart = null;
+            }
+            
+            window.myRadarChart = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '正解率 (%)',
+                        data: scores,
+                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                        borderColor: '#10b981',
+                        borderWidth: 3,
+                        pointBackgroundColor: '#ffffff',
+                        pointBorderColor: '#10b981',
+                        pointRadius: 6,
+                        pointHoverRadius: 8,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.label + ': ' + context.raw + '%';
+                                }
                             }
                         }
-                    }
-                },
-                scales: {
-                    r: {
-                        beginAtZero: true,
-                        max: 100,
-                        ticks: {
-                            stepSize: 20,
-                            backdropColor: 'transparent'
-                        },
-                        grid: {
-                            color: 'rgba(255,255,255,0.12)'
-                        },
-                        angleLines: {
-                            color: 'rgba(255,255,255,0.12)'
-                        },
-                        pointLabels: {
-                            color: '#f8fafc',
-                            font: {
-                                size: 14,
-                                weight: 'bold',
-                                family: 'Noto Sans JP'
+                    },
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                stepSize: 20,
+                                backdropColor: 'transparent'
+                            },
+                            grid: {
+                                color: 'rgba(255,255,255,0.12)'
+                            },
+                            angleLines: {
+                                color: 'rgba(255,255,255,0.12)'
+                            },
+                            pointLabels: {
+                                color: '#f8fafc',
+                                font: {
+                                    size: 14,
+                                    weight: 'bold',
+                                    family: 'Noto Sans JP'
+                                }
                             }
                         }
                     }
                 }
-            }
-        });
-        console.log('【デバッグ】レーダーチャート描画完了');
-    } catch(e) {
-        console.error('【デバッグ】チャート描画エラー:', e);
-        // ★★★ エラー時はメッセージを表示 ★★★
-        canvas.parentElement.innerHTML = '<div class="text-center text-muted py-5">チャートの描画に失敗しました</div>';
-    }
-}
-
-// ★★★ AIコメント取得 ★★★
-function loadAiComment() {
-    const resultId = "{{ result_id }}";
-    const commentLoading = document.getElementById('comment-loading');
-    const commentBody = document.getElementById('comment-body');
-    
-    if (!resultId || !commentLoading || !commentBody) return;
-    
-    console.log('【デバッグ】AIコメント取得開始: resultId=' + resultId);
-    
-    fetch(`/api/result/${resultId}/ai_comment`)
-        .then(res => {
-            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-            return res.json();
-        })
-        .then(data => {
-            commentLoading.style.display = 'none';
-            if (data.comment) {
-                commentBody.innerText = data.comment;
-            } else {
-                commentBody.innerText = 'コメントを取得できませんでした。';
-            }
-            commentBody.style.display = 'block';
-            console.log('【デバッグ】AIコメント取得完了');
-        })
-        .catch(error => {
-            console.error('AIコメント取得エラー:', error);
-            commentLoading.style.display = 'none';
-            commentBody.innerText = 'コメントの取得中にエラーが発生しました。';
-            commentBody.style.display = 'block';
-        });
-}
-
-// ★★★ ページ読み込み後に実行 ★★★
-(function() {
-    console.log('【デバッグ】result_page.html 読み込み開始');
-    
-    // ★★★ Chart.js が読み込まれるのを待つ ★★★
-    function waitForChartJs() {
-        if (typeof Chart !== 'undefined') {
-            console.log('【デバッグ】Chart.js が読み込まれました');
-            renderRadarChart();
-            
-            // 遅延実行（確実に表示させるため）
-            setTimeout(function() {
-                console.log('【デバッグ】500ms遅延実行: レーダーチャート再描画');
-                renderRadarChart();
-            }, 500);
-            
-            setTimeout(function() {
-                console.log('【デバッグ】1500ms遅延実行: レーダーチャート再描画');
-                renderRadarChart();
-            }, 1500);
-            
-            // AIコメントを取得
-            loadAiComment();
-        } else {
-            console.log('【デバッグ】Chart.js を待機中...');
-            setTimeout(waitForChartJs, 200);
+            });
+            console.log('【デバッグ】レーダーチャート描画完了');
+        } catch(e) {
+            console.error('【デバッグ】チャート描画エラー:', e);
+            canvas.parentElement.innerHTML = '<div class="text-center text-danger py-5">チャートの描画中にエラーが発生しました: ' + e.message + '</div>';
         }
     }
     
-    waitForChartJs();
+    // ★★★ AIコメント取得 ★★★
+    function loadAiComment() {
+        var resultId = "{{ result_id }}";
+        var commentLoading = document.getElementById('comment-loading');
+        var commentBody = document.getElementById('comment-body');
+        
+        if (!resultId || !commentLoading || !commentBody) return;
+        
+        console.log('【デバッグ】AIコメント取得開始: resultId=' + resultId);
+        
+        fetch('/api/result/' + resultId + '/ai_comment')
+            .then(function(res) {
+                if (!res.ok) throw new Error('HTTP error! status: ' + res.status);
+                return res.json();
+            })
+            .then(function(data) {
+                commentLoading.style.display = 'none';
+                if (data.comment) {
+                    commentBody.innerText = data.comment;
+                } else {
+                    commentBody.innerText = 'コメントを取得できませんでした。';
+                }
+                commentBody.style.display = 'block';
+                console.log('【デバッグ】AIコメント取得完了');
+            })
+            .catch(function(error) {
+                console.error('AIコメント取得エラー:', error);
+                commentLoading.style.display = 'none';
+                commentBody.innerText = 'コメントの取得中にエラーが発生しました。';
+                commentBody.style.display = 'block';
+            });
+    }
     
-    // ★★★ ウィンドウリサイズ時にも再描画 ★★★
-    window.addEventListener('resize', function() {
-        console.log('【デバッグ】リサイズ: レーダーチャート再描画');
+    // ★★★ ページ読み込み完了後に実行 ★★★
+    if (document.readyState === 'complete') {
+        setTimeout(renderRadarChart, 100);
+        setTimeout(loadAiComment, 200);
+    } else {
+        window.addEventListener('load', function() {
+            setTimeout(renderRadarChart, 100);
+            setTimeout(loadAiComment, 200);
+        });
+    }
+    
+    // ★★★ 2秒後にもう一度（確実に） ★★★
+    setTimeout(function() {
+        console.log('【デバッグ】2秒後遅延実行: レーダーチャート再描画');
         renderRadarChart();
+    }, 2000);
+    
+    // ★★★ ウィンドウリサイズ時 ★★★
+    window.addEventListener('resize', function() {
+        setTimeout(renderRadarChart, 300);
     });
     
     console.log('【デバッグ】result_page.html 読み込み完了');
