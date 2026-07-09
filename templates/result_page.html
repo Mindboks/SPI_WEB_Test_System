@@ -219,7 +219,6 @@
     </header>
 
     <div class="main-content">
-        <!-- 左パネル：レーダーチャート -->
         <div class="left-panel shadow-sm">
             <div class="card-title-label"><i class="fa-solid fa-chart-radar text-success"></i> 能力値バランスマップ</div>
             <div class="chart-wrapper">
@@ -227,9 +226,7 @@
             </div>
         </div>
 
-        <!-- 右パネル -->
         <div class="right-panel">
-            <!-- カテゴリー別到達度 -->
             <div class="info-card shadow-sm" style="flex: 0.8;">
                 <div class="card-title-label"><i class="fa-solid fa-table-list"></i> カテゴリー別到達度</div>
                 <div class="table-area">
@@ -258,7 +255,6 @@
                 </div>
             </div>
 
-            <!-- AIパーソナライズ・アドバイス -->
             <div class="info-card shadow-sm" style="flex: 1.2;">
                 <div class="card-title-label"><i class="fa-solid fa-robot text-success"></i> AIパーソナライズ・アドバイス</div>
                 <div id="ai-comment-area" style="flex: 1; min-height: 0; display: flex; flex-direction: column;">
@@ -291,13 +287,13 @@
 </div>
 
 <script>
-// ★★★ レーダーチャートを確実に表示する関数 ★★★
+// ★★★ レーダーチャート描画関数（完全版） ★★★
 function renderRadarChart() {
     console.log('【デバッグ】renderRadarChart 開始');
     
     const canvas = document.getElementById('radarChart');
     if (!canvas) {
-        console.error('radarChart要素が見つかりません');
+        console.error('【エラー】radarChart要素が見つかりません');
         return;
     }
     
@@ -305,11 +301,10 @@ function renderRadarChart() {
     const dataElement = document.getElementById('chart-data');
     
     if (!dataElement) {
-        console.error('chart-data要素が見つかりません');
+        console.error('【エラー】chart-data要素が見つかりません');
         return;
     }
     
-    // ★★★ データを直接取得 ★★★
     let labels = [];
     let scores = [];
     
@@ -320,7 +315,6 @@ function renderRadarChart() {
         console.log('【デバッグ】data-labels (生データ):', labelsAttr);
         console.log('【デバッグ】data-scores (生データ):', scoresAttr);
         
-        // ★★★ 空文字列や '[]' の場合の処理 ★★★
         if (labelsAttr && labelsAttr !== '[]' && labelsAttr !== '' && labelsAttr !== 'null' && labelsAttr !== 'None') {
             labels = JSON.parse(labelsAttr);
         } else {
@@ -340,8 +334,8 @@ function renderRadarChart() {
         
     } catch(e) {
         console.error('【デバッグ】データ解析エラー:', e);
-        labels = [];
-        scores = [];
+        labels = ['データがありません'];
+        scores = [0];
     }
     
     // ★★★ データがない場合のダミーデータ ★★★
@@ -418,7 +412,7 @@ function renderRadarChart() {
         console.log('【デバッグ】レーダーチャート描画完了');
     } catch(e) {
         console.error('【デバッグ】チャート描画エラー:', e);
-        // エラー時はHTMLでメッセージ表示
+        // ★★★ エラー時はメッセージを表示 ★★★
         canvas.parentElement.innerHTML = '<div class="text-center text-muted py-5">チャートの描画に失敗しました</div>';
     }
 }
@@ -460,32 +454,41 @@ function loadAiComment() {
 (function() {
     console.log('【デバッグ】result_page.html 読み込み開始');
     
-    // レーダーチャートを描画（即時）
-    renderRadarChart();
+    // ★★★ Chart.js が読み込まれるのを待つ ★★★
+    function waitForChartJs() {
+        if (typeof Chart !== 'undefined') {
+            console.log('【デバッグ】Chart.js が読み込まれました');
+            renderRadarChart();
+            
+            // 遅延実行（確実に表示させるため）
+            setTimeout(function() {
+                console.log('【デバッグ】500ms遅延実行: レーダーチャート再描画');
+                renderRadarChart();
+            }, 500);
+            
+            setTimeout(function() {
+                console.log('【デバッグ】1500ms遅延実行: レーダーチャート再描画');
+                renderRadarChart();
+            }, 1500);
+            
+            // AIコメントを取得
+            loadAiComment();
+        } else {
+            console.log('【デバッグ】Chart.js を待機中...');
+            setTimeout(waitForChartJs, 200);
+        }
+    }
     
-    // 500ms後にもう一度（DOM完全描画後）
-    setTimeout(function() {
-        console.log('【デバッグ】500ms遅延実行: レーダーチャート再描画');
+    waitForChartJs();
+    
+    // ★★★ ウィンドウリサイズ時にも再描画 ★★★
+    window.addEventListener('resize', function() {
+        console.log('【デバッグ】リサイズ: レーダーチャート再描画');
         renderRadarChart();
-    }, 500);
-    
-    // 1.5秒後にもう一度（確実に）
-    setTimeout(function() {
-        console.log('【デバッグ】1500ms遅延実行: レーダーチャート再描画');
-        renderRadarChart();
-    }, 1500);
-    
-    // AIコメントを取得
-    loadAiComment();
+    });
     
     console.log('【デバッグ】result_page.html 読み込み完了');
 })();
-
-// ★★★ ウィンドウリサイズ時にも再描画 ★★★
-window.addEventListener('resize', function() {
-    console.log('【デバッグ】リサイズ: レーダーチャート再描画');
-    renderRadarChart();
-});
 </script>
 </body>
 </html>
