@@ -57,7 +57,7 @@ app.config.update(
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "1.3.4"
+APP_VERSION = "1.3.6"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
@@ -82,7 +82,9 @@ def to_jst_filter(value):
         value = value.replace(tzinfo=pytz.UTC)
     return value.astimezone(jst).strftime('%Y-%m-%d %H:%M:%S')
 
-# ====== データベース接続プール（最終縮小版） ======
+# ====== データベース接続プール ======
+connection_pool = None
+
 def init_connection_pool():
     """接続プールを初期化（アプリ起動時に1回だけ）"""
     global connection_pool
@@ -90,7 +92,6 @@ def init_connection_pool():
     if not db_url:
         raise ValueError("DATABASE_URLが設定されていません")
     
-    # ★★★ URLにsslmodeを直接追加 ★★★
     if '?' not in db_url:
         db_url = db_url + '?sslmode=require'
         print(f"【DBプール】sslmode=requireを追加しました")
@@ -111,7 +112,6 @@ def get_db():
     for attempt in range(max_retries):
         try:
             conn = connection_pool.getconn()
-            # ★★★ 接続が有効かチェック ★★★
             cur = conn.cursor()
             cur.execute("SELECT 1")
             cur.close()
@@ -121,7 +121,6 @@ def get_db():
             if attempt < max_retries - 1:
                 import time
                 time.sleep(1)
-                # 接続プールを再初期化して再接続
                 try:
                     connection_pool = None
                     init_connection_pool()
@@ -137,7 +136,6 @@ def return_db(conn):
     global connection_pool
     if connection_pool and conn:
         try:
-            # ★★★ 接続が有効かチェックしてから返却 ★★★
             cur = conn.cursor()
             cur.execute("SELECT 1")
             cur.close()
@@ -148,8 +146,6 @@ def return_db(conn):
                 conn.close()
             except:
                 pass
-
-
 
 def hash_password(password):
     return hashlib.sha256((password or "").encode('utf-8')).hexdigest()
@@ -314,7 +310,6 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
 # ========== リクエスト前処理 ==========
 @app.before_request
 def before_request():
-    # HTTP→HTTPS強制リダイレクト
     if request.headers.get('X-Forwarded-Proto') == 'http':
         return redirect(request.url.replace('http://', 'https://'), 301)
     
@@ -942,13 +937,11 @@ def show_result(test_id, result_id):
             flash("結果が見つかりません。")
             return redirect(url_for('student_dashboard'))
 
-        # ★★★ detailsデータの確認（デバッグ用） ★★★
         details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
         print(f"【デバッグ】details_data: {details_data}")
         print(f"【デバッグ】labels: {details_data.get('labels')}")
         print(f"【デバッグ】scores: {details_data.get('scores')}")
         
-        # AIコメントは呼ばない → テンプレートに result_id だけ渡す
         return render_template('result_page.html',
             res=dict(res),
             details=details_data,
