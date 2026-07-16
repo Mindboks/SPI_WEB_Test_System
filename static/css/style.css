@@ -49,3 +49,58 @@ body {
 .border-dashed {
     border: 2px dashed #dee2e6 !important;
 }
+/* target文字のサイズ制御 */
+#target-box {
+    font-size: clamp(1rem, 3.5vw, 2.8rem);
+    max-width: 100%;
+    word-wrap: break-word;
+    word-break: break-all;
+    line-height: 1.4;
+}
+
+/* スマホ対応 */
+@media (max-width: 768px) {
+    #target-box {
+        font-size: clamp(0.9rem, 4vw, 1.8rem);
+        padding: 8px 12px;
+    }
+}
+
+/* 選択肢コンテナの最大高さを調整 */
+#choices-container {
+    max-height: 50vh;
+    overflow-y: auto;
+}
+
+/* ★★★ 右クリック完全禁止（CSSでも強制） ★★★ */
+* {
+    -webkit-user-select: none !important;
+    -moz-user-select: none !important;
+    -ms-user-select: none !important;
+    user-select: none !important;
+    -webkit-touch-callout: none !important;
+    -webkit-tap-highlight-color: transparent !important;
+}
+
+/* ラジオボタンだけは選択可能に */
+input[type="radio"],
+input[type="checkbox"] {
+    -webkit-user-select: auto !important;
+    -moz-user-select: auto !important;
+    -ms-user-select: auto !important;
+    user-select: auto !important;
+    pointer-events: auto !important;
+}
+
+/* 問題文は選択不可 */
+#question-text {
+    cursor: default;
+}
+
+/* 選択肢ラベルのテキストも選択不可 */
+.choice-label span {
+    -webkit-user-select: none !important;
+    -moz-user-select: none !important;
+    -ms-user-select: none !important;
+    user-select: none !important;
+}

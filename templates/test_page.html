@@ -33,8 +33,12 @@
                     <span class="badge bg-secondary text-white p-2 fw-bold" id="category-badge">カテゴリ: --</span>
                 </div>
 
+                <!-- target表示部分 -->
                 <div class="text-center my-2 flex-shrink-0" id="target-area" style="display:none;">
-                    <div class="display-4 fw-bold text-primary tracking-wider bg-primary-subtle py-2 px-4 rounded border border-primary-subtle" id="target-box" style="letter-spacing: 2px;"></div>
+                    <div class="fw-bold text-primary tracking-wider bg-primary-subtle py-2 px-4 rounded border border-primary-subtle" 
+                        id="target-box" 
+                        style="letter-spacing: 2px; font-size: clamp(1.2rem, 4vw, 3rem); word-break: break-all;">
+                    </div>
                 </div>
 
                 <!-- 問題文 -->
@@ -507,69 +511,61 @@ document.addEventListener('fullscreenchange', function() {
     }
 });
 
-// ====== 右クリック完全無効化 ======
+// ====== ★★★ 右クリック完全無効化（強化版） ★★★ ======
 (function() {
+    // 1. コンテキストメニューイベントをブロック（captureフェーズ）
     document.addEventListener('contextmenu', function(e) {
         e.preventDefault();
         e.stopPropagation();
         return false;
-    });
-    
+    }, true);  // ← captureフェーズでブロック
+
+    // 2. マウスダウン（右クリック）をブロック
     document.addEventListener('mousedown', function(e) {
         if (e.button === 2) {
             e.preventDefault();
             e.stopPropagation();
             return false;
         }
-    });
-    
+    }, true);
+
+    // 3. マウスアップ（右クリック）をブロック
     document.addEventListener('mouseup', function(e) {
         if (e.button === 2) {
             e.preventDefault();
             e.stopPropagation();
             return false;
         }
-    });
-    
-    document.addEventListener('copy', function(e) {
-        e.preventDefault();
-        return false;
-    });
-    document.addEventListener('paste', function(e) {
-        e.preventDefault();
-        return false;
-    });
-    document.addEventListener('cut', function(e) {
-        e.preventDefault();
-        return false;
-    });
-    
+    }, true);
+
+    // 4. 選択・コピー・ペースト・切り取りをブロック
     document.addEventListener('selectstart', function(e) {
         e.preventDefault();
         return false;
-    });
-    
+    }, true);
+
+    document.addEventListener('copy', function(e) {
+        e.preventDefault();
+        return false;
+    }, true);
+
+    document.addEventListener('paste', function(e) {
+        e.preventDefault();
+        return false;
+    }, true);
+
+    document.addEventListener('cut', function(e) {
+        e.preventDefault();
+        return false;
+    }, true);
+
+    // 5. ドラッグをブロック
     document.addEventListener('dragstart', function(e) {
         e.preventDefault();
         return false;
-    });
-    
-    let touchTimer = null;
-    document.addEventListener('touchstart', function(e) {
-        touchTimer = setTimeout(function() {
-            e.preventDefault();
-            showToast('⚠️ 長押し操作は禁止されています。', 2000);
-        }, 800);
-    }, { passive: false });
-    
-    document.addEventListener('touchend', function(e) {
-        clearTimeout(touchTimer);
-    });
-    
-    document.addEventListener('touchmove', function(e) {
-        clearTimeout(touchTimer);
-    });
-    
+    }, true);
+
+    // 6. キーボードショートカット（Shift+F10, ContextMenuキー）
     document.addEventListener('keydown', function(e) {
         if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
             e.preventDefault();
@@ -577,7 +573,50 @@ document.addEventListener('fullscreenchange', function() {
             showToast('⚠️ この操作は禁止されています。', 2000);
             return false;
         }
+    }, true);
+
+    // 7. モバイルの長押しメニューをブロック
+    let touchTimer = null;
+    document.addEventListener('touchstart', function(e) {
+        touchTimer = setTimeout(function() {
+            e.preventDefault();
+            showToast('⚠️ 長押し操作は禁止されています。', 2000);
+        }, 600);
+    }, { passive: false });
+
+    document.addEventListener('touchend', function(e) {
+        clearTimeout(touchTimer);
     });
+
+    document.addEventListener('touchmove', function(e) {
+        clearTimeout(touchTimer);
+    });
+
+    // 8. ★★★ 動的に追加される要素にも対応（MutationObserver） ★★★
+    const observer = new MutationObserver(function() {
+        // 新しく追加された要素にもイベントリスナーを適用
+        document.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }, true);
+    });
+    observer.observe(document.documentElement, {
+        childList: true,
+        subtree: true
+    });
+
+    // 9. ★★★ iframeやポップアップにも対応 ★★★
+    window.addEventListener('blur', function() {
+        // フォーカスが外れたときにも右クリックをブロック
+        document.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }, true);
+    });
+
+    console.log('【セキュリティ】右クリック完全無効化 - 有効 (強化版)');
 })();
 
 // ====== ★★★ キーボード制御（Winキー完全ブロック） ★★★ ======

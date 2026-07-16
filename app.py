@@ -57,7 +57,7 @@ app.config.update(
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "1.4.5"
+APP_VERSION = "1.4.6"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
@@ -398,6 +398,7 @@ def password_reset():
             return jsonify({'success': False, 'not_found': True, 'message': 'IDが見つかりません。'})
     return render_template('password_reset.html')
 
+
 @app.route('/teacher/admin', methods=['GET', 'POST'])
 def teacher_admin():
     if session.get('role') != 'teacher': 
@@ -462,32 +463,76 @@ def teacher_admin():
                 found = find_column(reader, [f'Answer_{i}'])
                 choice_columns.append(found)
             
-            inserted_count = 0
+            # ================================================================
+            # ★★★ 追加：CSVバリデーション（解答チェック） ★★★
+            # ================================================================
+            question_data = []
+            errors = []
+            row_count = 0
+            
+            # 全行を読み込んでバリデーション
             for row in reader:
+                row_count += 1
                 q_no_raw = row.get(q_no_col, '').strip() if q_no_col else ''
                 if not q_no_raw or q_no_raw == 'end':
                     continue
+                
                 try:
                     q_no_int = int(float(q_no_raw))
                 except (ValueError, TypeError):
+                    errors.append(f"行{row_count}: 問題番号 '{q_no_raw}' が数値ではありません")
                     continue
                 
-                a1 = row.get(choice_columns[0], '').strip() if choice_columns[0] else ''
-                a2 = row.get(choice_columns[1], '').strip() if choice_columns[1] else ''
-                a3 = row.get(choice_columns[2], '').strip() if choice_columns[2] else ''
-                a4 = row.get(choice_columns[3], '').strip() if choice_columns[3] else ''
-                a5 = row.get(choice_columns[4], '').strip() if choice_columns[4] else ''
-                a6 = row.get(choice_columns[5], '').strip() if choice_columns[5] else ''
-                a7 = row.get(choice_columns[6], '').strip() if choice_columns[6] else ''
-                a8 = row.get(choice_columns[7], '').strip() if choice_columns[7] else ''
-                a9 = row.get(choice_columns[8], '').strip() if choice_columns[8] else ''
-                a10 = row.get(choice_columns[9], '').strip() if choice_columns[9] else ''
-                answer_val = row.get(answer_col, '').strip() if answer_col else ''
-                explanation = row.get(explanation_col, '').strip() if explanation_col else ''
-                category = row.get(category_col, '').strip() if category_col else ''
-                question = row.get(question_col, '').strip() if question_col else ''
-                target = row.get(target_col, '').strip() if target_col else ''
+                # 選択肢を取得
+                choices = []
+                for col in choice_columns:
+                    val = row.get(col, '').strip() if col else ''
+                    if val:
+                        choices.append(val)
                 
+                # 解答を取得
+                answer_val = row.get(answer_col, '').strip() if answer_col else ''
+                
+                # ★★★ 解答のバリデーション ★★★
+                if answer_val:
+                    if answer_val.isdigit():
+                        ans_num = int(answer_val)
+                        if ans_num < 1 or ans_num > len(choices):
+                            errors.append(f"問題{q_no_int}: 解答番号 '{answer_val}' は選択肢({len(choices)}個)の範囲外です")
+                    else:
+                        if answer_val not in choices:
+                            errors.append(f"問題{q_no_int}: 解答 '{answer_val}' が選択肢に見つかりません")
+                
+                # データを保存
+                question_data.append({
+                    'q_no': q_no_int,
+                    'category': row.get(category_col, '').strip() if category_col else '',
+                    'question': row.get(question_col, '').strip() if question_col else '',
+                    'target': row.get(target_col, '').strip() if target_col else '',
+                    'answer': answer_val,
+                    'explanation': row.get(explanation_col, '').strip() if explanation_col else '',
+                    'a1': row.get(choice_columns[0], '').strip() if choice_columns[0] else '',
+                    'a2': row.get(choice_columns[1], '').strip() if choice_columns[1] else '',
+                    'a3': row.get(choice_columns[2], '').strip() if choice_columns[2] else '',
+                    'a4': row.get(choice_columns[3], '').strip() if choice_columns[3] else '',
+                    'a5': row.get(choice_columns[4], '').strip() if choice_columns[4] else '',
+                    'a6': row.get(choice_columns[5], '').strip() if choice_columns[5] else '',
+                    'a7': row.get(choice_columns[6], '').strip() if choice_columns[6] else '',
+                    'a8': row.get(choice_columns[7], '').strip() if choice_columns[7] else '',
+                    'a9': row.get(choice_columns[8], '').strip() if choice_columns[8] else '',
+                    'a10': row.get(choice_columns[9], '').strip() if choice_columns[9] else '',
+                })
+            
+            # ★★★ エラーがあった場合は登録せずに戻る ★★★
+            if errors:
+                flash(f"CSVにエラーがあります:\n" + "\n".join(errors[:10]))
+                if len(errors) > 10:
+                    flash(f"他に {len(errors) - 10} 件のエラーがあります")
+                return redirect(url_for('teacher_admin'))
+            
+            # ★★★ question_data を使ってINSERT ★★★
+            inserted_count = 0
+            for q in question_data:
                 def null_to_empty(val):
                     return val if val is not None else ''
                 
@@ -498,11 +543,11 @@ def teacher_admin():
                         answer, explanation
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ''', (
-                    new_test_id, q_no_int,
-                    null_to_empty(category), null_to_empty(question), null_to_empty(target),
-                    null_to_empty(a1), null_to_empty(a2), null_to_empty(a3), null_to_empty(a4), null_to_empty(a5),
-                    null_to_empty(a6), null_to_empty(a7), null_to_empty(a8), null_to_empty(a9), null_to_empty(a10),
-                    null_to_empty(answer_val), null_to_empty(explanation)
+                    new_test_id, q['q_no'],
+                    null_to_empty(q['category']), null_to_empty(q['question']), null_to_empty(q['target']),
+                    null_to_empty(q['a1']), null_to_empty(q['a2']), null_to_empty(q['a3']), null_to_empty(q['a4']), null_to_empty(q['a5']),
+                    null_to_empty(q['a6']), null_to_empty(q['a7']), null_to_empty(q['a8']), null_to_empty(q['a9']), null_to_empty(q['a10']),
+                    null_to_empty(q['answer']), null_to_empty(q['explanation'])
                 ))
                 inserted_count += 1
             
@@ -528,7 +573,9 @@ def teacher_admin():
             
         return redirect(url_for('teacher_admin'))
     
+    # ================================================================
     # GET処理
+    # ================================================================
     tests, results, classes = [], [], []
     conn = None
     try:
@@ -542,7 +589,7 @@ def teacher_admin():
         cur.execute('SELECT * FROM tests ORDER BY id DESC')
         tests = cur.fetchall()
         
-        # GET処理の結果一覧取得部分を修正
+        # 結果一覧取得（経過時間を含む）
         cur.execute('''SELECT r.id, t.name AS test_name, u.class_id, u.id AS student_id, u.name AS student_name, r.score, r.timestamp, r.elapsed_time_str 
                     FROM results r 
                     JOIN tests t ON r.test_id = t.id 
