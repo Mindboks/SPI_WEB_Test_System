@@ -239,65 +239,75 @@
                 <h5 class="card-title mb-0 fw-bold"><i class="bi bi-journal-text"></i> 学生の受験結果・リアルタイムログ</h5>
             </div>
             <div class="card-body p-0">
-                <div class="table-responsive" style="max-height: 595px; overflow-y: auto;">
-                    <table class="table table-hover align-middle mb-0" id="results-table">
-                        <thead class="table-light">
+            <div class="table-responsive" style="max-height: 595px; overflow-y: auto;">
+                <table class="table table-hover align-middle mb-0" id="results-table">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-3">学生ID / 氏名</th>
+                            <th>クラス</th>
+                            <th>受けたテスト</th>
+                            <th>得点</th>
+                            <th>⏱ 所要時間</th>
+                            <th>📅 日時</th>
+                            <th class="text-center" style="width: 80px;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if results %}
+                            {% for r in results %}
                             <tr>
-                                <th class="ps-3">学生ID / 氏名</th>
-                                <th>クラス</th>
-                                <th>受けたテスト</th>
-                                <th>得点</th>
-                                <th>所要時間</th>
-                                <th>日時</th>
-                                <th class="text-center" style="width: 80px;">操作</th>
+                                <td class="ps-3">
+                                    <div class="fw-bold text-dark">{{ r.student_name }}</div>
+                                    <div class="small text-muted">{{ r.student_id }}</div>
+                                </td>
+                                <td><span class="badge bg-light text-dark border">{{ r.class_id }}</span></td>
+                                <td class="small fw-bold">{{ r.test_name }}</td>
+                                <td>
+                                    {% if r.score == 0 %}
+                                        <span class="badge bg-danger text-white p-2">0点 (失格)</span>
+                                    {% else %}
+                                        <span class="badge bg-success p-2 fw-bold" style="font-size: 0.9rem;">{{ r.score }} 点</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if r.elapsed_time_str %}
+                                        <span class="badge bg-info text-dark">{{ r.elapsed_time_str }}</span>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <!-- ★★★ 修正部分 ★★★ -->
+                                <td class="text-muted small" style="font-size: 0.75rem;">
+                                    {% if r.timestamp %}
+                                        {% if r.timestamp is string %}
+                                            {{ r.timestamp[:16] }}
+                                        {% else %}
+                                            {{ r.timestamp.strftime('%Y/%m/%d %H:%M') }}
+                                        {% endif %}
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <!-- ★★★ 修正ここまで ★★★ -->
+                                <td class="text-center">
+                                    <a href="{{ url_for('teacher_view_result', result_id=r.id) }}" 
+                                    class="btn btn-sm btn-outline-primary" 
+                                    target="_blank"
+                                    title="結果を詳細表示">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                </td>
                             </tr>
-                        </thead>
-                        <tbody>
-                            {% if results %}
-                                {% for r in results %}
-                                <tr>
-                                    <td class="ps-3">
-                                        <div class="fw-bold text-dark">{{ r.student_name }}</div>
-                                        <div class="small text-muted">{{ r.student_id }}</div>
-                                    </td>
-                                    <td><span class="badge bg-light text-dark border">{{ r.class_id }}</span></td>
-                                    <td class="small fw-bold">{{ r.test_name }}</td>
-                                    <td>
-                                        {% if r.score == 0 %}
-                                            <span class="badge bg-danger text-white p-2">0点 (失格)</span>
-                                        {% else %}
-                                            <span class="badge bg-success p-2 fw-bold" style="font-size: 0.9rem;">{{ r.score }} 点</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if r.elapsed_time_str %}
-                                            <span class="badge bg-info text-dark">{{ r.elapsed_time_str }}</span>
-                                        {% else %}
-                                            <span class="text-muted">-</span>
-                                        {% endif %}
-                                    </td>
-                                    <td class="text-muted small" style="font-size: 0.8rem;">
-                                        {{ r.timestamp[:16] if r.timestamp else '-' }}
-                                    </td>
-                                    <td class="text-center">
-                                        <a href="{{ url_for('teacher_view_result', result_id=r.id) }}" 
-                                        class="btn btn-sm btn-outline-primary" 
-                                        target="_blank"
-                                        title="結果を詳細表示">
-                                            <i class="bi bi-eye"></i>
-                                        </a>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            {% else %}
-                                <tr>
-                                    <td colspan="6" class="text-center text-muted py-5">まだ受験データはありません。</td>
-                                </tr>
-                            {% endif %}
-                        </tbody>
-                    </table>
-                </div>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-5">まだ受験データはありません。</td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
             </div>
+        </div>
         </div>
 
     </div>
