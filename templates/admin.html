@@ -279,11 +279,7 @@
                                 <!-- ★★★ 修正部分 ★★★ -->
                                 <td class="text-muted small" style="font-size: 0.75rem;">
                                     {% if r.timestamp %}
-                                        {% if r.timestamp is string %}
-                                            {{ r.timestamp[:16] }}
-                                        {% else %}
-                                            {{ r.timestamp.strftime('%Y/%m/%d %H:%M') }}
-                                        {% endif %}
+                                        {{ r.timestamp | to_jst }}
                                     {% else %}
                                         -
                                     {% endif %}

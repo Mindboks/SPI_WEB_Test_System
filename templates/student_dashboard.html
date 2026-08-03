@@ -88,7 +88,7 @@
                                             <span class="badge bg-secondary p-2 fw-bold" style="font-size: 0.9rem;">{{ r.score }} 点</span>
                                         {% endif %}
                                     </td>
-                                    <td class="pe-3 text-muted small">{{ r.timestamp }}</td>
+                                    <td class="pe-3 text-muted small">{{ r.timestamp | to_jst }}</td>
                                 </tr>
                                 {% endfor %}
                             {% else %}

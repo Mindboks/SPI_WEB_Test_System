@@ -826,7 +826,10 @@ def submit_test(test_id):
     user_id = session.get('user_id')
     session_key = f"answers_{user_id}_{test_id}"
     user_answers = session.get(session_key, {})
-    
+
+    # submit_test 関数内にデバッグを追加
+    print(f"【デバッグ】日本時間: {now_jst}")
+    print(f"【デバッグ】経過時間: {elapsed_time_str}")
     # ★★★ 開始時間を取得して経過時間を計算 ★★★
     start_time_str = session.get('test_start_time')
     elapsed_seconds = 0
