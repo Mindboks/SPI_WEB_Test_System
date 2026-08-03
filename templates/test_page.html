@@ -19,9 +19,9 @@
         </div>
     </div>
 
-    <!-- デバッグ情報 -->
-    <div id="debug-area" style="background: #fff3cd; border: 2px solid #ffc107; padding: 10px 16px; border-radius: 4px; margin-bottom: 8px; font-size: 1rem; display: block; position: relative; z-index: 100;">
-        <strong>🔍 デバッグ:</strong> <span id="debug-message">読み込み中...</span>
+    <!-- デバッグ情報（完全に非表示） -->
+    <div id="debug-area" style="display: none;">
+        <span id="debug-message"></span>
     </div>
 
     <!-- メインコンテンツ -->
@@ -338,13 +338,13 @@
 <script>
 // ====== デバッグ関数 ======
 function showDebug(message) {
-    const debugArea = document.getElementById('debug-area');
-    const debugMsg = document.getElementById('debug-message');
-    if (debugArea && debugMsg) {
-        debugArea.style.display = 'block';
-        debugMsg.textContent = message;
-        console.log('【デバッグ】', message);
-    }
+//    const debugArea = document.getElementById('debug-area');
+//    const debugMsg = document.getElementById('debug-message');
+//    if (debugArea && debugMsg) {
+//        debugArea.style.display = 'block';
+//        debugMsg.textContent = message;
+//        console.log('【デバッグ】', message);
+//    }
 }
 
 function showToast(message, duration = 4000) {
