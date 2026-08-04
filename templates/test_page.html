@@ -565,10 +565,16 @@ function startExamFullscreen() {
     }
 }
 
-// ★★★ 全画面変更イベント（提出中はスキップ） ★★★
+
+// ★★★ 全画面変更イベント（提出中は完全スキップ） ★★★
 document.addEventListener('fullscreenchange', function() {
-    // ★★★ 提出中は不正検知をスキップ ★★★
-    if (isSubmitting || isSessionError || cheatDetected) return;
+    // ★★★ 提出中はすべてをスキップ（最優先） ★★★
+    if (isSubmitting) {
+        console.log('【提出中】全画面変更イベントをスキップ');
+        return;
+    }
+    
+    if (isSessionError || cheatDetected) return;
     
     if (!document.fullscreenElement && !cheatDetected && isFullscreen) {
         triggerCheatDetection('全画面が解除されました');
@@ -1120,39 +1126,53 @@ function renderNavigation(statusList) {
     });
 }
 
-// ====== 提出（強制）- 修正版 ======
+
+// ====== 提出（強制）- シンプル修正版 ======
 function forceSubmit() {
     if (isSubmitting) return;
     
-    // ★★★ 提出フラグを先に立てる（不正検知をスキップ） ★★★
+    // ★★★ 提出フラグを先に立てる ★★★
     isSubmitting = true;
     
-    if (confirm('本当に試験を終了して提出しますか？')) {
-        showLoading('📤 提出中', '結果を表示しています...');
-        
-        const checkedRadio = document.querySelector('input[name="choice"]:checked');
-        if (checkedRadio && currentQNo <= totalQuestions) {
-            const selectedChoice = checkedRadio.value;
-            safeApiCall(`/api/student/test/${testId}/get_question/${currentQNo}`, {
-                method: "POST",
-                body: JSON.stringify({ choice: selectedChoice, skip: false })
-            })
-            .finally(() => {
+    // ★★★ 不正検知関数を一時的に置き換え ★★★
+    const originalCheat = window.triggerCheatDetection;
+    window.triggerCheatDetection = function() {
+        console.log('【提出中】不正検知スキップ');
+        // 何もしない
+    };
+    
+    // 小さいタイムアウトを入れてフラグを確実に反映
+    setTimeout(function() {
+        if (confirm('本当に試験を終了して提出しますか？')) {
+            // 元に戻す
+            window.triggerCheatDetection = originalCheat;
+            
+            showLoading('📤 提出中', '結果を表示しています...');
+            const checkedRadio = document.querySelector('input[name="choice"]:checked');
+            if (checkedRadio && currentQNo <= totalQuestions) {
+                const selectedChoice = checkedRadio.value;
+                safeApiCall(`/api/student/test/${testId}/get_question/${currentQNo}`, {
+                    method: "POST",
+                    body: JSON.stringify({ choice: selectedChoice, skip: false })
+                })
+                .finally(() => {
+                    localStorage.removeItem("exam_end_time_id_" + testId);
+                    setTimeout(function() {
+                        window.location.replace(`/student/test/${testId}/submit`);
+                    }, 1000);
+                });
+            } else {
                 localStorage.removeItem("exam_end_time_id_" + testId);
                 setTimeout(function() {
                     window.location.replace(`/student/test/${testId}/submit`);
                 }, 1000);
-            });
+            }
         } else {
-            localStorage.removeItem("exam_end_time_id_" + testId);
-            setTimeout(function() {
-                window.location.replace(`/student/test/${testId}/submit`);
-            }, 1000);
+            // キャンセル：元に戻す
+            window.triggerCheatDetection = originalCheat;
+            isSubmitting = false;
         }
-    } else {
-        // ★★★ キャンセル時はフラグを戻す ★★★
-        isSubmitting = false;
-    }
+    }, 100);
 }
 
 // ====== 定期的なチェック（即失格） ======
