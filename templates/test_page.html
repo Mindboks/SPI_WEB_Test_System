@@ -565,8 +565,11 @@ function startExamFullscreen() {
     }
 }
 
-// ★★★ 全画面変更イベント（即失格） ★★★
+// ★★★ 全画面変更イベント（提出中はスキップ） ★★★
 document.addEventListener('fullscreenchange', function() {
+    // ★★★ 提出中は不正検知をスキップ ★★★
+    if (isSubmitting || isSessionError || cheatDetected) return;
+    
     if (!document.fullscreenElement && !cheatDetected && isFullscreen) {
         triggerCheatDetection('全画面が解除されました');
     } else if (document.fullscreenElement) {
@@ -577,12 +580,14 @@ document.addEventListener('fullscreenchange', function() {
 
 // ====== ★★★ 右クリック完全無効化（強化版） ★★★ ======
 (function() {
+    // コンテキストメニューイベントをブロック
     document.addEventListener('contextmenu', function(e) {
         e.preventDefault();
         e.stopPropagation();
         return false;
     }, true);
 
+    // マウスダウン（右クリック）をブロック
     document.addEventListener('mousedown', function(e) {
         if (e.button === 2) {
             e.preventDefault();
@@ -591,6 +596,7 @@ document.addEventListener('fullscreenchange', function() {
         }
     }, true);
 
+    // マウスアップ（右クリック）をブロック
     document.addEventListener('mouseup', function(e) {
         if (e.button === 2) {
             e.preventDefault();
@@ -599,6 +605,7 @@ document.addEventListener('fullscreenchange', function() {
         }
     }, true);
 
+    // 選択・コピー・ペースト・切り取りをブロック
     document.addEventListener('selectstart', function(e) {
         e.preventDefault();
         return false;
@@ -624,15 +631,10 @@ document.addEventListener('fullscreenchange', function() {
         return false;
     }, true);
 
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
-            e.preventDefault();
-            e.stopPropagation();
-            showToast('⚠️ この操作は禁止されています。', 2000);
-            return false;
-        }
-    }, true);
+    // ★★★ キーボードショートカット（Shift+F10, ContextMenuキー）は削除 ★★★
+    // （統合した keydown イベントに移したので、ここには書かない）
 
+    // モバイルの長押しメニューをブロック
     let touchTimer = null;
     document.addEventListener('touchstart', function(e) {
         touchTimer = setTimeout(function() {
@@ -652,9 +654,19 @@ document.addEventListener('fullscreenchange', function() {
     console.log('【セキュリティ】右クリック完全無効化 - 有効 (強化版)');
 })();
 
-// ====== ★★★ キーボード制御（Winキー完全ブロック + 即失格） ★★★ ======
+
+// ====== ★★★ キーボード制御（統合版：提出中スキップ） ★★★ ======
 document.addEventListener('keydown', function(e) {
-    if (isSessionError || cheatDetected) return;
+    // ★★★ 提出中はすべてのキー操作をスキップ ★★★
+    if (isSessionError || cheatDetected || isSubmitting) return;
+    
+    // ★★★ ContextMenuキー / Shift+F10 をブロック ★★★
+    if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+        e.preventDefault();
+        e.stopPropagation();
+        showToast('⚠️ この操作は禁止されています。', 2000);
+        return false;
+    }
     
     // ★★★ Winキー（Meta）で即失格 ★★★
     if (e.key === 'Meta' || 
@@ -763,13 +775,14 @@ document.addEventListener('keydown', function(e) {
         return false;
     }
     
-    // ブロックするキー
-    const blockedKeys = ['F11', 'F12', 'Escape', 'PrintScreen', 'ContextMenu'];
+    // ブロックするキー（F11, F12, Escape, PrintScreen）
+    const blockedKeys = ['F11', 'F12', 'Escape', 'PrintScreen'];
     if (blockedKeys.includes(e.key)) {
         e.preventDefault();
         return false;
     }
     
+    // DevTools対策
     if (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i')) {
         e.preventDefault();
         return false;
@@ -1107,13 +1120,16 @@ function renderNavigation(statusList) {
     });
 }
 
-// ====== 提出（強制） ======
+// ====== 提出（強制）- 修正版 ======
 function forceSubmit() {
     if (isSubmitting) return;
+    
+    // ★★★ 提出フラグを先に立てる（不正検知をスキップ） ★★★
     isSubmitting = true;
     
     if (confirm('本当に試験を終了して提出しますか？')) {
         showLoading('📤 提出中', '結果を表示しています...');
+        
         const checkedRadio = document.querySelector('input[name="choice"]:checked');
         if (checkedRadio && currentQNo <= totalQuestions) {
             const selectedChoice = checkedRadio.value;
@@ -1134,6 +1150,7 @@ function forceSubmit() {
             }, 1000);
         }
     } else {
+        // ★★★ キャンセル時はフラグを戻す ★★★
         isSubmitting = false;
     }
 }
