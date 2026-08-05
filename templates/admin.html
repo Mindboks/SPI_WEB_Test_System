@@ -247,8 +247,8 @@
                             <th>クラス</th>
                             <th>受けたテスト</th>
                             <th>得点</th>
-                            <th>⏱ 所要時間</th>
-                            <th>📅 日時</th>
+                            <th>経過時間</th>  <!-- ★★★ 追加 ★★★ -->
+                            <th>日時</th>
                             <th class="text-center" style="width: 80px;">操作</th>
                         </tr>
                     </thead>
@@ -269,22 +269,8 @@
                                         <span class="badge bg-success p-2 fw-bold" style="font-size: 0.9rem;">{{ r.score }} 点</span>
                                     {% endif %}
                                 </td>
-                                <td>
-                                    {% if r.elapsed_time_str %}
-                                        <span class="badge bg-info text-dark">{{ r.elapsed_time_str }}</span>
-                                    {% else %}
-                                        <span class="text-muted">-</span>
-                                    {% endif %}
-                                </td>
-                                <!-- ★★★ 修正部分 ★★★ -->
-                                <td class="text-muted small" style="font-size: 0.75rem;">
-                                    {% if r.timestamp %}
-                                        {{ r.timestamp | to_jst }}
-                                    {% else %}
-                                        -
-                                    {% endif %}
-                                </td>
-                                <!-- ★★★ 修正ここまで ★★★ -->
+                                <td class="text-muted small">{{ r.elapsed_time_str or '-' }}</td>  <!-- ★★★ 追加 ★★★ -->
+                                <td class="text-muted small" style="font-size: 0.8rem;">{{ r.timestamp | to_jst }}</td>
                                 <td class="text-center">
                                     <a href="{{ url_for('teacher_view_result', result_id=r.id) }}" 
                                     class="btn btn-sm btn-outline-primary" 
@@ -381,7 +367,7 @@ function sortTable(column) {
                 bVal = parseInt(bScoreText.replace(/[^0-9]/g, '')) || 0;
                 break;
             case 'timestamp':
-                // ★★★ 日時は文字列のまま比較（YYYY-MM-DD HH:MM:SS 形式なので文字列比較でOK） ★★★
+                // ★★★ 日時は文字列のまま比較（YYYY-MM-DD HH:MM:SS） ★★★
                 aVal = cells[4]?.textContent?.trim() || '';
                 bVal = bCells[4]?.textContent?.trim() || '';
                 // ★★★ 日時をDateオブジェクトに変換して比較（より正確） ★★★
@@ -400,7 +386,6 @@ function sortTable(column) {
         // ★★★ 日時の場合は文字列比較（YYYY-MM-DD HH:MM:SS 形式） ★★★
         // この形式は文字列比較でも正しくソートできる
         if (column === 'timestamp') {
-            // 同じ形式で比較
             const result = aVal.localeCompare(bVal);
             return currentOrder === 'asc' ? result : -result;
         }

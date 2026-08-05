@@ -877,20 +877,37 @@ def submit_test(test_id):
             test_name=test_name
         )
         
-        # ★★★ import と now_jst を先に定義 ★★★
         import pytz
         from datetime import datetime
         jst = pytz.timezone('Asia/Tokyo')
         now_jst = datetime.now(jst)
         
-        # ★★★ print文は now_jst 定義後 ★★★
-        print(f"【デバッグ】日本時間: {now_jst}")
+        # ★★★ 経過時間を計算 ★★★
+        elapsed_seconds = 0
+        elapsed_time_str = ""
+        test_start_time = session.get('test_start_time')
+        if test_start_time:
+            try:
+                from datetime import datetime as dt
+                start_time = dt.fromisoformat(test_start_time)
+                start_time_jst = start_time.replace(tzinfo=pytz.UTC).astimezone(jst)
+                elapsed_seconds = int((now_jst - start_time_jst).total_seconds())
+                minutes = elapsed_seconds // 60
+                seconds = elapsed_seconds % 60
+                elapsed_time_str = f"{minutes:02d}分{seconds:02d}秒"
+            except Exception as e:
+                print(f"【経過時間計算エラー】: {e}")
+                elapsed_seconds = 0
+                elapsed_time_str = "00分00秒"
         
-        # ★★★ elapsed_time なしでINSERT ★★★
+        print(f"【デバッグ】日本時間: {now_jst}")
+        print(f"【デバッグ】経過時間: {elapsed_time_str}")
+        
+        # ★★★ elapsed_time を含めてINSERT ★★★
         cur.execute('''
-            INSERT INTO results (user_id, test_id, score, details, comment, timestamp) 
-            VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
-        ''', (user_id, test_id, final_score, json.dumps(analysis), ai_comment, now_jst))
+            INSERT INTO results (user_id, test_id, score, details, comment, timestamp, elapsed_time, elapsed_time_str) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+        ''', (user_id, test_id, final_score, json.dumps(analysis), ai_comment, now_jst, elapsed_seconds, elapsed_time_str))
         
         result_id = cur.fetchone()['id']
         conn.commit()
