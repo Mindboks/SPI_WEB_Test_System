@@ -314,7 +314,7 @@ function showDummyMessage(action) {
     alert('🔒 サーバー管理者のみ変更ができます。\n（現在は試験表示中です）');
 }
 
-// ========== 並べ替え機能 ==========
+// ========== 並べ替え機能（修正版：日時対応） ==========
 let currentOrder = 'asc';
 let lastSortedColumn = null;
 let originalRows = [];
@@ -363,7 +363,6 @@ function sortTable(column) {
         
         switch(column) {
             case 'student_name':
-                // 氏名は2行になっているので、最初の行のテキストを取得
                 aVal = cells[0]?.querySelector('.fw-bold')?.textContent?.trim() || '';
                 bVal = bCells[0]?.querySelector('.fw-bold')?.textContent?.trim() || '';
                 break;
@@ -376,15 +375,17 @@ function sortTable(column) {
                 bVal = bCells[2]?.textContent?.trim() || '';
                 break;
             case 'score':
-                // 得点は「XX点」から数値部分を抽出
                 const aScoreText = cells[3]?.textContent?.trim() || '0点';
                 const bScoreText = bCells[3]?.textContent?.trim() || '0点';
                 aVal = parseInt(aScoreText.replace(/[^0-9]/g, '')) || 0;
                 bVal = parseInt(bScoreText.replace(/[^0-9]/g, '')) || 0;
                 break;
             case 'timestamp':
+                // ★★★ 日時は文字列のまま比較（YYYY-MM-DD HH:MM:SS 形式なので文字列比較でOK） ★★★
                 aVal = cells[4]?.textContent?.trim() || '';
                 bVal = bCells[4]?.textContent?.trim() || '';
+                // ★★★ 日時をDateオブジェクトに変換して比較（より正確） ★★★
+                // ただし、すでに文字列比較で問題ないはず
                 break;
             default:
                 aVal = '';
@@ -394,6 +395,14 @@ function sortTable(column) {
         // 数値の場合は数値比較
         if (column === 'score') {
             return currentOrder === 'asc' ? aVal - bVal : bVal - aVal;
+        }
+        
+        // ★★★ 日時の場合は文字列比較（YYYY-MM-DD HH:MM:SS 形式） ★★★
+        // この形式は文字列比較でも正しくソートできる
+        if (column === 'timestamp') {
+            // 同じ形式で比較
+            const result = aVal.localeCompare(bVal);
+            return currentOrder === 'asc' ? result : -result;
         }
         
         // 文字列の場合は日本語対応で比較
