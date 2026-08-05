@@ -335,6 +335,27 @@
     }
 </style>
 
+<!-- ====== 提出確認モーダル（カスタム） ====== -->
+<div id="submit-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 100000; justify-content: center; align-items: center; pointer-events: none;">
+    <div style="background: #1e293b; border-radius: 20px; padding: 40px; max-width: 500px; width: 90%; text-align: center; border: 2px solid #10b981; box-shadow: 0 20px 60px rgba(0,0,0,0.5); pointer-events: auto;">
+        <!-- コンテンツ（変更なし） -->
+        <div style="font-size: 50px; margin-bottom: 15px;">📤</div>
+        <h2 style="color: #f8fafc; font-weight: 700; margin-bottom: 10px;">試験を提出しますか？</h2>
+        <p style="color: #94a3b8; margin-bottom: 25px; line-height: 1.6;">
+            提出すると、この試験は<b style="color: #10b981;">終了</b>します。<br>
+            未回答の問題は<b style="color: #fcd34d;">不正解</b>として扱われます。
+        </p>
+        <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+            <button onclick="confirmSubmit()" class="btn btn-success btn-lg fw-bold px-5 py-2" style="border-radius: 12px; min-width: 150px;">
+                <i class="bi bi-check-lg"></i> 提出する
+            </button>
+            <button onclick="cancelSubmit()" class="btn btn-outline-secondary btn-lg fw-bold px-5 py-2" style="border-radius: 12px; min-width: 150px; border-color: #475569; color: #94a3b8;">
+                <i class="bi bi-x-lg"></i> キャンセル
+            </button>
+        </div>
+    </div>
+</div>
+
 <script>
 // ====== デバッグ関数 ======
 function showDebug(message) {
@@ -462,6 +483,7 @@ let isLoading = false;
 let retryCount = 0;
 const MAX_RETRY = 3;
 let isFullscreen = false;
+let isModalShowing = false;  // ★★★ モーダル表示中フラグ（新規追加） ★★★
 
 showDebug('=== 試験ページ読み込み完了 ===');
 showDebug(`test_id: ${testId}, total_q: ${totalQuestions}`);
@@ -566,11 +588,11 @@ function startExamFullscreen() {
 }
 
 
-// ★★★ 全画面変更イベント（提出中は完全スキップ） ★★★
+// ★★★ 全画面変更イベント（提出中またはモーダル表示中は完全スキップ） ★★★
 document.addEventListener('fullscreenchange', function() {
-    // ★★★ 提出中はすべてをスキップ（最優先） ★★★
-    if (isSubmitting) {
-        console.log('【提出中】全画面変更イベントをスキップ');
+    // ★★★ 提出中またはモーダル表示中はすべてスキップ（最優先） ★★★
+    if (isSubmitting || isModalShowing) {
+        console.log('【提出中/モーダル表示中】全画面変更イベントをスキップ');
         return;
     }
     
@@ -663,8 +685,8 @@ document.addEventListener('fullscreenchange', function() {
 
 // ====== ★★★ キーボード制御（統合版：提出中スキップ） ★★★ ======
 document.addEventListener('keydown', function(e) {
-    // ★★★ 提出中はすべてのキー操作をスキップ ★★★
-    if (isSessionError || cheatDetected || isSubmitting) return;
+    // ★★★ 提出中またはモーダル表示中はすべてのキー操作をスキップ ★★★
+    if (isSessionError || cheatDetected || isSubmitting || isModalShowing) return;
     
     // ★★★ ContextMenuキー / Shift+F10 をブロック ★★★
     if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
@@ -1127,57 +1149,62 @@ function renderNavigation(statusList) {
 }
 
 
-// ====== 提出（強制）- シンプル修正版 ======
+// ====== 提出（強制）- カスタムモーダル版 ======
 function forceSubmit() {
     if (isSubmitting) return;
     
     // ★★★ 提出フラグを先に立てる ★★★
     isSubmitting = true;
+    isModalShowing = true;  // ★★★ モーダル表示中フラグをON ★★★
     
-    // ★★★ 不正検知関数を一時的に置き換え ★★★
-    const originalCheat = window.triggerCheatDetection;
-    window.triggerCheatDetection = function() {
-        console.log('【提出中】不正検知スキップ');
-        // 何もしない
-    };
-    
-    // 小さいタイムアウトを入れてフラグを確実に反映
-    setTimeout(function() {
-        if (confirm('本当に試験を終了して提出しますか？')) {
-            // 元に戻す
-            window.triggerCheatDetection = originalCheat;
-            
-            showLoading('📤 提出中', '結果を表示しています...');
-            const checkedRadio = document.querySelector('input[name="choice"]:checked');
-            if (checkedRadio && currentQNo <= totalQuestions) {
-                const selectedChoice = checkedRadio.value;
-                safeApiCall(`/api/student/test/${testId}/get_question/${currentQNo}`, {
-                    method: "POST",
-                    body: JSON.stringify({ choice: selectedChoice, skip: false })
-                })
-                .finally(() => {
-                    localStorage.removeItem("exam_end_time_id_" + testId);
-                    setTimeout(function() {
-                        window.location.replace(`/student/test/${testId}/submit`);
-                    }, 1000);
-                });
-            } else {
-                localStorage.removeItem("exam_end_time_id_" + testId);
-                setTimeout(function() {
-                    window.location.replace(`/student/test/${testId}/submit`);
-                }, 1000);
-            }
-        } else {
-            // キャンセル：元に戻す
-            window.triggerCheatDetection = originalCheat;
-            isSubmitting = false;
-        }
-    }, 100);
+    const modal = document.getElementById('submit-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
 }
 
-// ====== 定期的なチェック（即失格） ======
+// ====== 提出確定（モーダルから呼び出し） ======
+function confirmSubmit() {
+    const modal = document.getElementById('submit-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    isModalShowing = false;  // ★★★ モーダル表示中フラグをOFF ★★★
+    
+    showLoading('📤 提出中', '結果を表示しています...');
+    
+    const checkedRadio = document.querySelector('input[name="choice"]:checked');
+    if (checkedRadio && currentQNo <= totalQuestions) {
+        const selectedChoice = checkedRadio.value;
+        safeApiCall(`/api/student/test/${testId}/get_question/${currentQNo}`, {
+            method: "POST",
+            body: JSON.stringify({ choice: selectedChoice, skip: false })
+        })
+        .finally(() => {
+            localStorage.removeItem("exam_end_time_id_" + testId);
+            // ★★★ 直接提出画面へ遷移（window.location.replace） ★★★
+            window.location.replace(`/student/test/${testId}/submit`);
+        });
+    } else {
+        localStorage.removeItem("exam_end_time_id_" + testId);
+        window.location.replace(`/student/test/${testId}/submit`);
+    }
+}
+
+// ====== 提出キャンセル（モーダルから呼び出し） ======
+function cancelSubmit() {
+    const modal = document.getElementById('submit-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    isModalShowing = false;  // ★★★ モーダル表示中フラグをOFF ★★★
+    isSubmitting = false;
+}
+
+// ====== 定期的なチェック（モーダル表示中はスキップ） ======
 setInterval(function() {
-    if (isSessionError || cheatDetected || timeUpFlag) return;
+    // ★★★ モーダル表示中もスキップ ★★★
+    if (isSessionError || cheatDetected || timeUpFlag || isSubmitting || isModalShowing) return;
     if (!document.fullscreenElement && isFullscreen) {
         triggerCheatDetection('全画面が解除されました（定期チェック）');
     }
