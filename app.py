@@ -57,7 +57,7 @@ app.config.update(
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "1.4.7"
+APP_VERSION = "1.5.0"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
@@ -167,6 +167,38 @@ def check_session():
         return jsonify({'valid': True, 'user_id': session['user_id']})
     return jsonify({'valid': False}), 401
 
+@app.route('/student/personality/result/<int:result_id>')
+def personality_result(result_id):
+    """性格診断用の結果ページ（専用テンプレート）"""
+    if session.get('role') != 'student':
+        return redirect(url_for('login'))
+    
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute('''
+        SELECT r.*, u.name as student_name, t.name as test_name
+        FROM results r
+        JOIN users u ON r.user_id = u.id
+        JOIN tests t ON r.test_id = t.id
+        WHERE r.id = %s AND r.user_id = %s
+    ''', (result_id, session.get('user_id')))
+    res = cur.fetchone()
+    cur.close()
+    return_db(conn)
+    
+    if not res:
+        flash("結果が見つかりません。")
+        return redirect(url_for('student_dashboard'))
+    
+    details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
+    
+    return render_template('personality_result.html',
+        res=dict(res),
+        details=details_data,
+        result_id=result_id,
+        student_name=res['student_name'],
+        test_name=res['test_name'])
+
 
 # ========== コメント生成関数 ==========
 def generate_ai_comment(score, details_data):
@@ -226,9 +258,19 @@ class LRUCache:
     def clear(self):
         self.cache.clear()
 
+
+
+
 _comment_cache = LRUCache(maxsize=100)
 
+# ========== AIコメント生成関数（能力テスト・性格診断両対応） ==========
 def generate_ai_comment_with_gemini(score, details_data, student_name, test_name):
+    """
+    テスト結果からAIコメントを生成する（能力テスト・性格診断両対応）
+    - 性格診断（test_nameに「性格」または「診断」を含む）→ 性格診断用プロンプト
+    - それ以外 → 従来の能力テスト用プロンプト
+    """
+
     if not GEMINI_AVAILABLE or not gemini_model:
         return generate_ai_comment(score, details_data)
     
@@ -237,6 +279,7 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
     if not labels or not scores:
         return generate_ai_comment(score, details_data)
     
+    # キャッシュキー生成（従来通り）
     cache_key = f"{student_name}_{test_name}_{score}_{'_'.join(map(str, scores))}"
     cached = _comment_cache.get(cache_key)
     if cached:
@@ -244,6 +287,77 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
         return cached
     
     avg_score = sum(scores) / len(scores) if scores else 0
+    
+    # ================================================================
+    # ★★★ 性格診断の場合（test_nameに「性格」または「診断」を含む） ★★★
+    # ================================================================
+    if "性格" in test_name or "診断" in test_name:
+        # カテゴリ別スコアの整形
+        category_results = "\n".join([f"- {labels[i]}: {scores[i]}%" for i in range(len(labels)) if i < len(scores)])
+        
+        # 強み（上位2カテゴリ）と弱み（下位2カテゴリ）を計算
+        sorted_data = sorted(zip(labels, scores), key=lambda x: x[1], reverse=True)
+        strengths = sorted_data[:2]
+        weaknesses = sorted_data[-2:]
+        
+        prompt = f"""あなたはキャリアカウンセラーです。以下の学生の性格診断結果を分析し、**仕事で活かせる性格特性**という観点から励ましと具体的なアドバイスを日本語で作成してください。
+
+学生名: {student_name}
+診断名: {test_name}
+
+【カテゴリ別スコア（高いほどその特性が強い）】
+{category_results}
+
+【特徴】
+強み（特に高い特性）: {', '.join([f'{cat}({sc}%)' for cat, sc in strengths]) if strengths else '特になし'}
+伸ばすべき点（特に低い特性）: {', '.join([f'{cat}({sc}%)' for cat, sc in weaknesses]) if weaknesses else '特になし'}
+
+【重要な観点】
+この診断は、**日本企業で働くための性格適性**を測るものです。
+以下の観点からコメントを作成してください：
+
+1. この学生の**仕事で活かせる性格の強み**は何か
+2. **職場で伸ばすべき性格特性**は何か
+3. **具体的な行動アドバイス**（仕事に活かす方法）
+
+【出力形式】
+以下の4つのセクションに分けて、全体で300〜400字程度で回答してください：
+
+💡 **総合評価**
+⭐ **仕事で活かせる強み**
+📚 **職場で伸ばすべき力**
+🎯 **次のステップ（具体的な行動）**
+
+全体として、学生のモチベーションが上がるような温かみのある表現を心がけてください。"""
+
+        try:
+            result = [None]
+            error = [None]
+            def call_gemini():
+                try:
+                    response = gemini_model.generate_content(prompt)
+                    result[0] = response.text.lstrip('\n\r ')
+                    print(f"【Gemini】性格診断コメント生成完了（{len(result[0])}文字）")
+                except Exception as e:
+                    error[0] = e
+            thread = threading.Thread(target=call_gemini)
+            thread.start()
+            thread.join(timeout=90)
+            if thread.is_alive():
+                print("【Geminiタイムアウト】性格診断-フォールバック")
+                return generate_ai_comment(score, details_data)
+            if error[0]:
+                raise error[0]
+            comment = result[0] if result[0] else generate_ai_comment(score, details_data)
+            _comment_cache.set(cache_key, comment)
+            return comment
+        except Exception as e:
+            print(f"【Geminiエラー(性格診断)】: {e}")
+            return generate_ai_comment(score, details_data)
+
+    # ================================================================
+    # ★★★ 従来の能力テストの場合（既存コードそのまま） ★★★
+    # ================================================================
     max_category = labels[scores.index(max(scores))] if scores else "なし"
     min_category = labels[scores.index(min(scores))] if scores else "なし"
     strong_cats = [labels[i] for i in range(len(labels)) if i < len(scores) and scores[i] >= 70]
@@ -306,6 +420,9 @@ def generate_ai_comment_with_gemini(score, details_data, student_name, test_name
     except Exception as e:
         print(f"【Geminiエラー】: {e}")
         return generate_ai_comment(score, details_data)
+    
+
+
 
 # ========== リクエスト前処理 ==========
 @app.before_request
@@ -1007,21 +1124,24 @@ def show_result(test_id, result_id):
             flash("結果が見つかりません。")
             return redirect(url_for('student_dashboard'))
 
-        # ★★★ detailsデータの確認とデフォルト値 ★★★
         details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
         
-        # ★★★ デバッグ出力（Renderのログで確認） ★★★
-        print(f"【デバッグ】details_data: {details_data}")
-        print(f"【デバッグ】labels: {details_data.get('labels')}")
-        print(f"【デバッグ】scores: {details_data.get('scores')}")
-        print(f"【デバッグ】res['details'] 生データ: {res.get('details')}")
-        
-        return render_template('result_page.html',
-            res=dict(res),
-            details=details_data,
-            result_id=result_id,
-            test_name=test_name
-        )
+        # ★★★ 性格診断かどうかでテンプレートを切り替え ★★★
+        if "性格" in test_name or "診断" in test_name:
+            return render_template('personality_result.html',
+                res=dict(res),
+                details=details_data,
+                result_id=result_id,
+                student_name=res['student_name'],
+                test_name=test_name
+            )
+        else:
+            return render_template('result_page.html',
+                res=dict(res),
+                details=details_data,
+                result_id=result_id,
+                test_name=test_name
+            )
         
     except Exception as e:
         if conn:

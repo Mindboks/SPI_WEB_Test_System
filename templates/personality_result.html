@@ -1,0 +1,175 @@
+{% extends "layout.html" %}
+{% block title %}性格診断結果 / Personality Result{% endblock %}
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card shadow-lg border-0 rounded-4">
+                <div class="card-header bg-success text-white py-3 rounded-top-4">
+                    <h3 class="mb-0 fw-bold text-center">
+                        <i class="bi bi-person-check me-2"></i> {{ student_name }} さんの性格診断結果
+                    </h3>
+                    <p class="text-center mb-0 mt-2 small">日本企業で働くための性格適性分析</p>
+                </div>
+                <div class="card-body p-4">
+                    
+                    <!-- レーダーチャート -->
+                    <div class="row mb-4">
+                        <div class="col-md-8 mx-auto">
+                            <canvas id="radarChart" height="300"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- 強み・弱みサマリー -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="card border-success h-100">
+                                <div class="card-header bg-success text-white">
+                                    <i class="bi bi-star-fill me-2"></i> 強み（高い特性）
+                                </div>
+                                <div class="card-body" id="strengths-area">
+                                    <p class="text-muted">読み込み中...</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card border-warning h-100">
+                                <div class="card-header bg-warning text-dark">
+                                    <i class="bi bi-arrow-up-circle me-2"></i> 伸ばすべき点
+                                </div>
+                                <div class="card-body" id="weaknesses-area">
+                                    <p class="text-muted">読み込み中...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AIコメント -->
+                    <div class="card border-info">
+                        <div class="card-header bg-info text-white">
+                            <i class="bi bi-robot me-2"></i> AIキャリアアドバイス
+                        </div>
+                        <div class="card-body" id="ai-comment-area">
+                            <div id="comment-loading" class="text-center py-4">
+                                <div class="spinner-border text-info mb-2" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="text-muted mb-0">AIがコメントを生成中です...</p>
+                            </div>
+                            <div id="comment-body" class="ai-comment-box" style="display: none; white-space: pre-wrap; line-height: 1.8;"></div>
+                        </div>
+                    </div>
+
+                    <!-- 戻るボタン -->
+                    <div class="text-center mt-4">
+                        <a href="{{ url_for('student_dashboard') }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left"></i> ダッシュボードに戻る
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// ====== チャート描画 ======
+const labels = {{ details.labels | tojson | safe }};
+const scores = {{ details.scores | tojson | safe }};
+
+// 強み（上位2）と弱み（下位2）を計算
+const sorted = labels.map((label, i) => ({ label, score: scores[i] }))
+    .sort((a, b) => b.score - a.score);
+
+const strengths = sorted.slice(0, 2);
+const weaknesses = sorted.slice(-2).reverse();
+
+// 強みを表示
+document.getElementById('strengths-area').innerHTML = strengths.map(s => 
+    `<div class="d-flex justify-content-between align-items-center border-bottom py-2">
+        <span class="fw-bold">${s.label}</span>
+        <span class="badge bg-success fs-6">${s.score}%</span>
+    </div>`
+).join('') || '<p class="text-muted">特に顕著な強みはありません。</p>';
+
+// 弱みを表示
+document.getElementById('weaknesses-area').innerHTML = weaknesses.map(s => 
+    `<div class="d-flex justify-content-between align-items-center border-bottom py-2">
+        <span class="fw-bold">${s.label}</span>
+        <span class="badge bg-warning fs-6">${s.score}%</span>
+    </div>`
+).join('') || '<p class="text-muted">特に気になる点はありません。</p>';
+
+// レーダーチャート
+const ctx = document.getElementById('radarChart').getContext('2d');
+new Chart(ctx, {
+    type: 'radar',
+    data: {
+        labels: labels,
+        datasets: [{
+            label: '性格特性スコア (%)',
+            data: scores,
+            backgroundColor: 'rgba(16, 185, 129, 0.2)',
+            borderColor: '#10b981',
+            borderWidth: 3,
+            pointBackgroundColor: '#ffffff',
+            pointBorderColor: '#10b981',
+            pointRadius: 6
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return context.label + ': ' + context.raw + '%';
+                    }
+                }
+            }
+        },
+        scales: {
+            r: {
+                beginAtZero: true,
+                max: 100,
+                ticks: { stepSize: 20 },
+                grid: { color: 'rgba(0,0,0,0.1)' },
+                pointLabels: {
+                    font: { size: 13, weight: 'bold' }
+                }
+            }
+        }
+    }
+});
+
+// ====== AIコメント取得 ======
+const resultId = "{{ result_id }}";
+fetch('/api/result/' + resultId + '/ai_comment')
+    .then(res => res.json())
+    .then(data => {
+        document.getElementById('comment-loading').style.display = 'none';
+        const body = document.getElementById('comment-body');
+        body.textContent = data.comment || 'コメントを取得できませんでした。';
+        body.style.display = 'block';
+    })
+    .catch(() => {
+        document.getElementById('comment-loading').style.display = 'none';
+        const body = document.getElementById('comment-body');
+        body.textContent = 'コメントの取得中にエラーが発生しました。';
+        body.style.display = 'block';
+    });
+</script>
+
+<style>
+.ai-comment-box {
+    min-height: 150px;
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 10px;
+    color: #1a1a2e;
+}
+</style>
+{% endblock %}
