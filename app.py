@@ -57,7 +57,7 @@ app.config.update(
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "1.5.6"
+APP_VERSION = "1.5.7"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
@@ -102,6 +102,7 @@ def init_connection_pool():
     )
     print(f"【DBプール】初期化完了 (最小1, 最大10)")
 
+
 def get_db():
     """接続プールから接続を取得（リトライ付き・強化版）"""
     global connection_pool
@@ -125,7 +126,6 @@ def get_db():
                 import time
                 time.sleep(retry_delay)
                 try:
-                    # 接続プールを再初期化
                     global connection_pool
                     connection_pool = None
                     init_connection_pool()
