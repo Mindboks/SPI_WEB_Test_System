@@ -100,29 +100,34 @@
     </div>
 </div>
 
+
 <!-- ====== 全画面ブロッカー（目的説明付き） ====== -->
 <div id="fullscreen-blocker" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.92); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; padding: 20px; overflow-y: auto;">
     <div style="max-width: 640px; width: 100%; text-align: center;">
-        <div style="font-size: 60px; margin-bottom: 10px;">🚀</div>
-        <h2 class="fw-bold text-warning mb-3" style="font-size: 1.8rem;">このテストを受ける意味</h2>
+        <div style="font-size: 60px; margin-bottom: 10px;">🧠</div>
+        <h2 class="fw-bold text-warning mb-3" style="font-size: 1.8rem;">この診断を受ける意味</h2>
         
         <div style="background: rgba(255,255,255,0.05); border-radius: 16px; padding: 24px; margin-bottom: 24px; text-align: left; line-height: 1.8; color: #e2e8f0; border: 1px solid rgba(255,255,255,0.05);">
             <p style="margin-bottom: 12px; font-size: 1.05rem;">
-                この教材は、<b style="color: #10b981;">日本企業で働くために必要な基礎力</b>を身につけるためのものです。
+                この診断は、<b style="color: #10b981;">日本企業で働くための性格適性</b>を理解するためのものです。
             </p>
             
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.95rem; margin: 16px 0; background: rgba(0,0,0,0.3); border-radius: 12px; padding: 12px;">
-                <div style="padding: 4px 0;">✅ 正しく読む力</div>
-                <div style="padding: 4px 0;">✅ 正しく考える力</div>
-                <div style="padding: 4px 0;">✅ 正しく計算する力</div>
-                <div style="padding: 4px 0;">✅ 正しく判断する力</div>
-                <div style="grid-column: span 2; text-align: center; padding: 4px 0;">✅ 正しく伝える力</div>
+                <div style="padding: 4px 0;">🤝 協調性（チームワーク）</div>
+                <div style="padding: 4px 0;">📋 誠実性（責任感・計画性）</div>
+                <div style="padding: 4px 0;">💬 外向性（コミュニケーション）</div>
+                <div style="padding: 4px 0;">🧘 情緒安定性（ストレス耐性）</div>
+                <div style="padding: 4px 0;">💡 開放性（創造性・柔軟性）</div>
+                <div style="padding: 4px 0;">🚀 行動力（主体性・決断力）</div>
+                <div style="padding: 4px 0;">❤️ 配慮性（思いやり・気配り）</div>
+                <div style="padding: 4px 0;">🎯 統制力（自己管理・集中力）</div>
             </div>
             
             <div style="background: rgba(16, 185, 129, 0.1); border-radius: 10px; padding: 12px; border-left: 4px solid #10b981; margin-top: 8px;">
                 <p style="font-size: 0.95rem; color: #cbd5e1; margin-bottom: 0;">
-                    💡 <b style="color: #fcd34d;">「点数」だけでなく「どの力が伸びたか」</b>に注目しましょう。<br>
-                    <span style="font-size: 0.85rem; color: #94a3b8;">問題を解き終わった後に結果が表示されます</span>
+                    💡 <b style="color: #fcd34d;">「自分の性格の特徴」</b>を知ることで、<br>
+                    仕事での<b style="color: #fcd34d;">強み</b>と<b style="color: #fcd34d;">伸ばすべき点</b>が見えてきます。<br>
+                    <span style="font-size: 0.85rem; color: #94a3b8;">診断が終わると結果が表示されます</span>
                 </p>
             </div>
         </div>
@@ -132,7 +137,7 @@
         </button>
         <div style="margin-top: 14px;">
             <button class="btn btn-outline-secondary" onclick="location.href='/student_dashboard'" style="font-size: 0.9rem; border-color: #475569; color: #94a3b8;">
-                <i class="bi bi-arrow-left"></i> 試験を中止して戻る
+                <i class="bi bi-arrow-left"></i> 診断を中止して戻る
             </button>
         </div>
     </div>
@@ -483,7 +488,11 @@ let isLoading = false;
 let retryCount = 0;
 const MAX_RETRY = 3;
 let isFullscreen = false;
-let isModalShowing = false;  // ★★★ モーダル表示中フラグ（新規追加） ★★★
+let isModalShowing = false;
+
+// ★★★ 試験名に「性格」が含まれているか判定（画面表示の切り替え用） ★★★
+const isPersonalityTest = "{{ test.name }}".includes("性格") || "{{ test.name }}".includes("診断");
+console.log("【デバッグ】isPersonalityTest:", isPersonalityTest);
 
 showDebug('=== 試験ページ読み込み完了 ===');
 showDebug(`test_id: ${testId}, total_q: ${totalQuestions}`);
@@ -556,12 +565,98 @@ const overlay = document.getElementById('fullscreen-blocker');
 const cheatOverlay = document.getElementById('cheat-overlay');
 const fullscreenBtn = document.getElementById('fullscreen-btn');
 
+
+
+// ====== 全画面ブロッカー表示制御 ======
 function showFullscreenBlocker() {
     if (overlay) {
+        // ★★★ 性格診断かどうかで表示内容を切り替え ★★★
+        if (isPersonalityTest) {
+            overlay.innerHTML = `
+                <div style="max-width: 640px; width: 100%; text-align: center;">
+                    <div style="font-size: 60px; margin-bottom: 10px;">🧠</div>
+                    <h2 class="fw-bold text-warning mb-3" style="font-size: 1.8rem;">この診断を受ける意味</h2>
+                    
+                    <div style="background: rgba(255,255,255,0.05); border-radius: 16px; padding: 24px; margin-bottom: 24px; text-align: left; line-height: 1.8; color: #e2e8f0; border: 1px solid rgba(255,255,255,0.05);">
+                        <p style="margin-bottom: 12px; font-size: 1.05rem;">
+                            この診断は、<b style="color: #10b981;">日本企業で働くための性格適性</b>を理解するためのものです。
+                        </p>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.95rem; margin: 16px 0; background: rgba(0,0,0,0.3); border-radius: 12px; padding: 12px;">
+                            <div style="padding: 4px 0;">🤝 協調性（チームワーク）</div>
+                            <div style="padding: 4px 0;">📋 誠実性（責任感・計画性）</div>
+                            <div style="padding: 4px 0;">💬 外向性（コミュニケーション）</div>
+                            <div style="padding: 4px 0;">🧘 情緒安定性（ストレス耐性）</div>
+                            <div style="padding: 4px 0;">💡 開放性（創造性・柔軟性）</div>
+                            <div style="padding: 4px 0;">🚀 行動力（主体性・決断力）</div>
+                            <div style="padding: 4px 0;">❤️ 配慮性（思いやり・気配り）</div>
+                            <div style="padding: 4px 0;">🎯 統制力（自己管理・集中力）</div>
+                        </div>
+                        
+                        <div style="background: rgba(16, 185, 129, 0.1); border-radius: 10px; padding: 12px; border-left: 4px solid #10b981; margin-top: 8px;">
+                            <p style="font-size: 0.95rem; color: #cbd5e1; margin-bottom: 0;">
+                                💡 <b style="color: #fcd34d;">「自分の性格の特徴」</b>を知ることで、<br>
+                                仕事での<b style="color: #fcd34d;">強み</b>と<b style="color: #fcd34d;">伸ばすべき点</b>が見えてきます。<br>
+                                <span style="font-size: 0.85rem; color: #94a3b8;">診断が終わると結果が表示されます</span>
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-success btn-lg fw-bold px-5 py-3 shadow" onclick="startExamFullscreen()" style="font-size: 1.2rem; border-radius: 12px; min-width: 200px;">
+                        <i class="bi bi-play-fill"></i> 理解しました！開始する
+                    </button>
+                    <div style="margin-top: 14px;">
+                        <button class="btn btn-outline-secondary" onclick="location.href='/student_dashboard'" style="font-size: 0.9rem; border-color: #475569; color: #94a3b8;">
+                            <i class="bi bi-arrow-left"></i> 診断を中止して戻る
+                        </button>
+                    </div>
+                </div>
+            `;
+        } else {
+            // 従来の能力テスト用表示
+            overlay.innerHTML = `
+                <div style="max-width: 640px; width: 100%; text-align: center;">
+                    <div style="font-size: 60px; margin-bottom: 10px;">🚀</div>
+                    <h2 class="fw-bold text-warning mb-3" style="font-size: 1.8rem;">このテストを受ける意味</h2>
+                    
+                    <div style="background: rgba(255,255,255,0.05); border-radius: 16px; padding: 24px; margin-bottom: 24px; text-align: left; line-height: 1.8; color: #e2e8f0; border: 1px solid rgba(255,255,255,0.05);">
+                        <p style="margin-bottom: 12px; font-size: 1.05rem;">
+                            この教材は、<b style="color: #10b981;">日本企業で働くために必要な基礎力</b>を身につけるためのものです。
+                        </p>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.95rem; margin: 16px 0; background: rgba(0,0,0,0.3); border-radius: 12px; padding: 12px;">
+                            <div style="padding: 4px 0;">✅ 正しく読む力</div>
+                            <div style="padding: 4px 0;">✅ 正しく考える力</div>
+                            <div style="padding: 4px 0;">✅ 正しく計算する力</div>
+                            <div style="padding: 4px 0;">✅ 正しく判断する力</div>
+                            <div style="grid-column: span 2; text-align: center; padding: 4px 0;">✅ 正しく伝える力</div>
+                        </div>
+                        
+                        <div style="background: rgba(16, 185, 129, 0.1); border-radius: 10px; padding: 12px; border-left: 4px solid #10b981; margin-top: 8px;">
+                            <p style="font-size: 0.95rem; color: #cbd5e1; margin-bottom: 0;">
+                                💡 <b style="color: #fcd34d;">「点数」だけでなく「どの力が伸びたか」</b>に注目しましょう。<br>
+                                <span style="font-size: 0.85rem; color: #94a3b8;">問題を解き終わった後に結果が表示されます</span>
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-success btn-lg fw-bold px-5 py-3 shadow" onclick="startExamFullscreen()" style="font-size: 1.2rem; border-radius: 12px; min-width: 200px;">
+                        <i class="bi bi-play-fill"></i> 理解しました！開始する
+                    </button>
+                    <div style="margin-top: 14px;">
+                        <button class="btn btn-outline-secondary" onclick="location.href='/student_dashboard'" style="font-size: 0.9rem; border-color: #475569; color: #94a3b8;">
+                            <i class="bi bi-arrow-left"></i> 試験を中止して戻る
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
         overlay.style.display = 'flex';
-        showDebug('全画面ブロッカー表示');
+        showDebug('全画面ブロッカー表示（' + (isPersonalityTest ? '性格診断' : '能力テスト') + '）');
     }
 }
+
+
 
 function hideFullscreenBlocker() {
     if (overlay) {
