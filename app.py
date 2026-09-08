@@ -57,7 +57,7 @@ app.config.update(
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "1.5.2"
+APP_VERSION = "1.5.3"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
@@ -103,15 +103,18 @@ def init_connection_pool():
     print(f"【DBプール】初期化完了 (最小1, 最大10)")
 
 def get_db():
-    """接続プールから接続を取得（リトライ付き）"""
+    """接続プールから接続を取得（リトライ付き・強化版）"""
     global connection_pool
     if connection_pool is None:
         init_connection_pool()
     
-    max_retries = 3
+    max_retries = 5
+    retry_delay = 2
+    
     for attempt in range(max_retries):
         try:
             conn = connection_pool.getconn()
+            # 接続確認
             cur = conn.cursor()
             cur.execute("SELECT 1")
             cur.close()
@@ -120,8 +123,10 @@ def get_db():
             print(f"【エラー】get_db 試行 {attempt + 1}/{max_retries}: {e}")
             if attempt < max_retries - 1:
                 import time
-                time.sleep(1)
+                time.sleep(retry_delay)
                 try:
+                    # 接続プールを再初期化
+                    global connection_pool
                     connection_pool = None
                     init_connection_pool()
                 except:
@@ -130,6 +135,7 @@ def get_db():
             else:
                 raise
     raise Exception("データベース接続に失敗しました")
+
 
 def return_db(conn):
     """接続をプールに返却（エラー対策）"""
@@ -987,6 +993,14 @@ def submit_test(test_id):
         analysis = {"labels": labels, "scores": scores}
         final_score = int((correct_count / total_q) * 100)
         
+        # ★★★ デバッグ出力を追加 ★★★
+        print(f"【デバッグ-submit】labels: {labels}")
+        print(f"【デバッグ-submit】scores: {scores}")
+        print(f"【デバッグ-submit】analysis: {analysis}")
+        print(f"【デバッグ-submit】final_score: {final_score}")
+        print(f"【デバッグ-submit】total_q: {total_q}")
+        print(f"【デバッグ-submit】correct_count: {correct_count}")
+        
         ai_comment = generate_ai_comment_with_gemini(
             score=final_score,
             details_data=analysis,
@@ -1048,9 +1062,6 @@ def submit_test(test_id):
         traceback.print_exc()
         flash("採点処理中にエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
-
-    
-    
 # ========== 非同期AIコメントAPI ==========
 @app.route('/api/result/<int:result_id>/ai_comment', methods=['GET'])
 def api_get_ai_comment(result_id):
@@ -1125,6 +1136,13 @@ def show_result(test_id, result_id):
             return redirect(url_for('student_dashboard'))
 
         details_data = json.loads(res['details']) if res.get('details') else {'labels': [], 'scores': []}
+        
+        # ★★★ デバッグ出力（必須！） ★★★
+        print(f"【デバッグ】test_name: {test_name}")
+        print(f"【デバッグ】details_data: {details_data}")
+        print(f"【デバッグ】labels: {details_data.get('labels')}")
+        print(f"【デバッグ】scores: {details_data.get('scores')}")
+        print(f"【デバッグ】res['details'] 生データ: {res.get('details')}")
         
         # ★★★ 性格診断かどうかでテンプレートを切り替え ★★★
         if "性格" in test_name or "診断" in test_name:
