@@ -105,7 +105,7 @@ def init_connection_pool():
 
 def get_db():
     """接続プールから接続を取得（リトライ付き・強化版）"""
-    global connection_pool
+    global connection_pool    # ← ★★★ 関数の最初の行にこれがあるか ★★★
     if connection_pool is None:
         init_connection_pool()
     
@@ -115,7 +115,6 @@ def get_db():
     for attempt in range(max_retries):
         try:
             conn = connection_pool.getconn()
-            # 接続確認
             cur = conn.cursor()
             cur.execute("SELECT 1")
             cur.close()
