@@ -68,12 +68,118 @@
                     </div>
                 </div>
             </div>
+
+            <!-- ★★★ 自己PR生成ボタン（新規追加） ★★★ -->
+            <div class="card border-success mt-3">
+                <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-pencil-square me-2"></i> 自己PR生成</span>
+                    <button id="generate-pr-btn" class="btn btn-light btn-sm fw-bold" onclick="generateSelfPR()">
+                        <i class="bi bi-magic me-1"></i> AIで自己PRを生成
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="pr-loading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border text-success" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="text-muted mt-2">AIが自己PRを生成中です...</p>
+                    </div>
+                    <div id="pr-result" style="display: none;">
+                        <div id="pr-content" class="p-3 bg-light rounded" style="white-space: pre-wrap; line-height: 1.8; min-height: 100px;"></div>
+                        <div class="mt-2 text-end">
+                            <button class="btn btn-outline-secondary btn-sm" onclick="copyPR()">
+                                <i class="bi bi-clipboard me-1"></i> コピー
+                            </button>
+                        </div>
+                    </div>
+                    <div id="pr-placeholder" class="text-muted text-center py-2">
+                        <i class="bi bi-info-circle me-1"></i> ボタンを押すと、診断結果から自己PRを生成します
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
+// ====== 自己PR生成 ======
+function generateSelfPR() {
+    const btn = document.getElementById('generate-pr-btn');
+    const loading = document.getElementById('pr-loading');
+    const result = document.getElementById('pr-result');
+    const placeholder = document.getElementById('pr-placeholder');
+    const content = document.getElementById('pr-content');
+    
+    // ボタンを無効化
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> 生成中...';
+    
+    // ローディング表示
+    loading.style.display = 'block';
+    result.style.display = 'none';
+    placeholder.style.display = 'none';
+    
+    // 診断データを取得
+    const labels = {{ details.labels | tojson | safe }};
+    const scores = {{ details.scores | tojson | safe }};
+    const studentName = "{{ student_name }}";
+    
+    // 強みと弱みを計算
+    const sorted = labels.map((label, i) => ({ label, score: scores[i] || 0 }))
+        .sort((a, b) => b.score - a.score);
+    const strengths = sorted.slice(0, 2);
+    const weaknesses = sorted.slice(-2).reverse();
+    
+    // APIにリクエスト
+    fetch('/api/generate_self_pr', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+            student_name: studentName,
+            strengths: strengths,
+            weaknesses: weaknesses,
+            all_scores: sorted
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        loading.style.display = 'none';
+        if (data.error) {
+            content.textContent = '自己PRの生成に失敗しました。もう一度お試しください。';
+            content.style.color = '#dc3545';
+        } else {
+            content.textContent = data.self_pr;
+            content.style.color = '#1a1a2e';
+        }
+        result.style.display = 'block';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i> 再生成';
+    })
+    .catch(error => {
+        loading.style.display = 'none';
+        content.textContent = '通信エラーが発生しました。もう一度お試しください。';
+        content.style.color = '#dc3545';
+        result.style.display = 'block';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-magic me-1"></i> AIで自己PRを生成';
+    });
+}
+
+// ====== 自己PRをコピー ======
+function copyPR() {
+    const content = document.getElementById('pr-content');
+    const text = content.textContent;
+    navigator.clipboard.writeText(text).then(() => {
+        alert('✅ 自己PRをクリップボードにコピーしました！');
+    }).catch(() => {
+        alert('コピーに失敗しました。手動でコピーしてください。');
+    });
+}
 // ====== デバッグ：データを確認 ======
 console.log("【デバッグ】labels:", {{ details.labels | tojson | safe }});
 console.log("【デバッグ】scores:", {{ details.scores | tojson | safe }});

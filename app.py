@@ -57,7 +57,7 @@ app.config.update(
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "1.5.8"
+APP_VERSION = "1.5.9"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
@@ -1208,6 +1208,69 @@ def check_test_session(test_id):
     if session.get('current_test_id') != test_id:
         return jsonify({'valid': False, 'redirect': url_for('login')})
     return jsonify({'valid': True})
+
+
+# ========== 自己PR生成API ==========
+@app.route('/api/generate_self_pr', methods=['POST'])
+def generate_self_pr():
+    if session.get('role') != 'student':
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Invalid data'}), 400
+    
+    student_name = data.get('student_name', 'あなた')
+    strengths = data.get('strengths', [])
+    weaknesses = data.get('weaknesses', [])
+    all_scores = data.get('all_scores', [])
+    
+    # プロンプトを作成
+    strengths_text = "\n".join([f"- {s['label']}: {s['score']}%" for s in strengths]) if strengths else "特になし"
+    weaknesses_text = "\n".join([f"- {w['label']}: {w['score']}%" for w in weaknesses]) if weaknesses else "特になし"
+    all_scores_text = "\n".join([f"- {s['label']}: {s['score']}%" for s in all_scores]) if all_scores else "データなし"
+    
+    prompt = f"""あなたは就職活動アドバイザーです。以下の性格診断結果をもとに、**企業にアピールする自己PR**を作成してください。
+
+学生名: {student_name}
+
+【診断結果】
+{all_scores_text}
+
+【強み（特に高い特性）】
+{strengths_text}
+
+【伸ばすべき点】
+{weaknesses_text}
+
+【作成条件】
+1. 全体で200〜300字程度
+2. 学生が**仕事で活かせる強み**を明確にアピールする
+3. ポジティブな表現で、自己成長への意欲も含める
+4. 日本語で、自然な文章
+5. 箇条書きではなく、段落形式
+
+【出力形式】
+自己PRの本文のみを出力してください（「自己PR」という見出しは不要です）。"""
+    
+    if not GEMINI_AVAILABLE or not gemini_model:
+        # フォールバック
+        return jsonify({
+            'self_pr': f"""私の強みは{strengths[0]['label']}と{strengths[1]['label']}です。
+{strengths[0]['label']}では、チームの中で協力しながら目標を達成することができます。
+また、{strengths[1]['label']}では、物事を計画的に進め、最後までやり遂げる力を発揮できます。
+現在は{weaknesses[0]['label']}や{weaknesses[1]['label']}の面でも成長を目指しており、日々のコミュニケーションや自己管理を意識的に行っています。
+御社では、これらの強みを活かして貢献するとともに、さらなる成長に努めたいと考えています。"""
+        })
+    
+    try:
+        response = gemini_model.generate_content(prompt)
+        self_pr = response.text.strip()
+        return jsonify({'self_pr': self_pr})
+    except Exception as e:
+        print(f"【自己PR生成エラー】: {e}")
+        return jsonify({'error': str(e)}), 500
+
 
 # ========== 志望動機作成機能 ==========
 @app.route('/motivation_form')
