@@ -105,7 +105,7 @@ def init_connection_pool():
 
 def get_db():
     """接続プールから接続を取得（リトライ付き・強化版）"""
-    global connection_pool    # ← ★★★ 関数の最初の行にこれがあるか ★★★
+    global connection_pool
     if connection_pool is None:
         init_connection_pool()
     
@@ -125,7 +125,6 @@ def get_db():
                 import time
                 time.sleep(retry_delay)
                 try:
-                    global connection_pool
                     connection_pool = None
                     init_connection_pool()
                 except:
