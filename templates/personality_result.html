@@ -74,76 +74,92 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
+// ====== デバッグ：データを確認 ======
+console.log("【デバッグ】labels:", {{ details.labels | tojson | safe }});
+console.log("【デバッグ】scores:", {{ details.scores | tojson | safe }});
+
 // ====== チャート描画 ======
 const labels = {{ details.labels | tojson | safe }};
 const scores = {{ details.scores | tojson | safe }};
 
-// 強み（上位2）と弱み（下位2）を計算
-const sorted = labels.map((label, i) => ({ label, score: scores[i] }))
-    .sort((a, b) => b.score - a.score);
+// ★★★ データがない場合のフォールバック ★★★
+if (!labels || labels.length === 0) {
+    // ダミーデータを表示（エラー回避用）
+    document.getElementById('radarChart').parentElement.innerHTML = `
+        <div class="alert alert-warning text-center">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            診断データを読み込めませんでした。
+            <br><small>管理者にお問い合わせください。</small>
+        </div>
+    `;
+} else {
+    // 強み（上位2）と弱み（下位2）を計算
+    const sorted = labels.map((label, i) => ({ label, score: scores[i] || 0 }))
+        .sort((a, b) => b.score - a.score);
 
-const strengths = sorted.slice(0, 2);
-const weaknesses = sorted.slice(-2).reverse();
+    const strengths = sorted.slice(0, 2);
+    const weaknesses = sorted.slice(-2).reverse();
 
-// 強みを表示
-document.getElementById('strengths-area').innerHTML = strengths.map(s => 
-    `<div class="d-flex justify-content-between align-items-center border-bottom py-2">
-        <span class="fw-bold">${s.label}</span>
-        <span class="badge bg-success fs-6">${s.score}%</span>
-    </div>`
-).join('') || '<p class="text-muted">特に顕著な強みはありません。</p>';
+    // 強みを表示
+    document.getElementById('strengths-area').innerHTML = strengths.map(s => 
+        `<div class="d-flex justify-content-between align-items-center border-bottom py-2">
+            <span class="fw-bold">${s.label}</span>
+            <span class="badge bg-success fs-6">${s.score}%</span>
+        </div>`
+    ).join('') || '<p class="text-muted">特に顕著な強みはありません。</p>';
 
-// 弱みを表示
-document.getElementById('weaknesses-area').innerHTML = weaknesses.map(s => 
-    `<div class="d-flex justify-content-between align-items-center border-bottom py-2">
-        <span class="fw-bold">${s.label}</span>
-        <span class="badge bg-warning fs-6">${s.score}%</span>
-    </div>`
-).join('') || '<p class="text-muted">特に気になる点はありません。</p>';
+    // 弱みを表示
+    document.getElementById('weaknesses-area').innerHTML = weaknesses.map(s => 
+        `<div class="d-flex justify-content-between align-items-center border-bottom py-2">
+            <span class="fw-bold">${s.label}</span>
+            <span class="badge bg-warning fs-6">${s.score}%</span>
+        </div>`
+    ).join('') || '<p class="text-muted">特に気になる点はありません。</p>';
 
-// レーダーチャート
-const ctx = document.getElementById('radarChart').getContext('2d');
-new Chart(ctx, {
-    type: 'radar',
-    data: {
-        labels: labels,
-        datasets: [{
-            label: '性格特性スコア (%)',
-            data: scores,
-            backgroundColor: 'rgba(16, 185, 129, 0.2)',
-            borderColor: '#10b981',
-            borderWidth: 3,
-            pointBackgroundColor: '#ffffff',
-            pointBorderColor: '#10b981',
-            pointRadius: 6
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: true,
-        plugins: {
-            legend: { display: false },
-            tooltip: {
-                callbacks: {
-                    label: function(context) {
-                        return context.label + ': ' + context.raw + '%';
+    // レーダーチャート
+    const ctx = document.getElementById('radarChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: '性格特性スコア (%)',
+                data: scores,
+                backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                borderColor: '#10b981',
+                borderWidth: 3,
+                pointBackgroundColor: '#ffffff',
+                pointBorderColor: '#10b981',
+                pointRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.label + ': ' + context.raw + '%';
+                        }
+                    }
+                }
+            },
+            scales: {
+                r: {
+                    beginAtZero: true,
+                    max: 100,
+                    ticks: { stepSize: 20 },
+                    grid: { color: 'rgba(0,0,0,0.1)' },
+                    pointLabels: {
+                        font: { size: 13, weight: 'bold' }
                     }
                 }
             }
-        },
-        scales: {
-            r: {
-                beginAtZero: true,
-                max: 100,
-                ticks: { stepSize: 20 },
-                grid: { color: 'rgba(0,0,0,0.1)' },
-                pointLabels: {
-                    font: { size: 13, weight: 'bold' }
-                }
-            }
         }
-    }
-});
+    });
+}
 
 // ====== AIコメント取得 ======
 const resultId = "{{ result_id }}";
