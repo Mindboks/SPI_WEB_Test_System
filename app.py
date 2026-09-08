@@ -57,7 +57,7 @@ app.config.update(
 )
 
 # ========== バージョン情報 ==========
-APP_VERSION = "1.5.4"
+APP_VERSION = "1.5.5"
 
 # ========== 全テンプレートにバージョンを渡す ==========
 @app.context_processor
@@ -1062,6 +1062,7 @@ def submit_test(test_id):
         traceback.print_exc()
         flash("採点処理中にエラーが発生しました。")
         return redirect(url_for('student_dashboard'))
+    
 # ========== 非同期AIコメントAPI ==========
 @app.route('/api/result/<int:result_id>/ai_comment', methods=['GET'])
 def api_get_ai_comment(result_id):
@@ -1103,7 +1104,6 @@ def api_get_ai_comment(result_id):
     except Exception as e:
         print(f"AI comment error: {e}")
         return jsonify({'error': str(e)}), 500
-
 
 @app.route('/student/test/<int:test_id>/result/<int:result_id>')
 def show_result(test_id, result_id):
