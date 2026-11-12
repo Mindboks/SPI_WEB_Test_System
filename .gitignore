@@ -1,3 +1,6 @@
 venv/
+# 追加
 __pycache__/
 *.pyc
+logs/
+cookies.txt
